@@ -1,5 +1,6 @@
 // Locale / point of interest: an additional scoutable location in a sector
-define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
+define(['ash', 'game/vos/ResourcesVO', 'game/constants/LocaleConstants', 'game/constants/WorldCreatorConstants'],
+function (Ash, ResourcesVO, LocaleConstants, WorldCreatorConstants) {
 
 	localeTypes = {
 		factory: 0,
@@ -23,12 +24,14 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 		
 		type: -1,
 		isEasy: false,
+        isEarly: true,
 		requirements: {},
         costs: {},
 	
-        constructor: function (type, isEasy) {
+        constructor: function (type, isEasy, isEarly) {
 			this.type = type;
 			this.isEasy = isEasy;
+            this.isEarly = isEarly;
 			this.requirements.vision = [this.getVisionRequirement(), -1];
 			this.costs = {};
 			this.costs.stamina = this.getStaminaRequirement();
@@ -36,46 +39,31 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 		},
         
         getVisionRequirement: function () {
-            switch (this.type) {
-                case localeTypes.factory: return 50;
-                case localeTypes.house: return 30;
-                case localeTypes.lab: return this.isEasy ? 50 : 90;
-                case localeTypes.grove: return 20;
-                case localeTypes.market: return 40;
-                case localeTypes.maintenance: return 50;
-                case localeTypes.transport: return 50;
-                case localeTypes.sewer: return this.isEasy ? 50 : 80;
-                case localeTypes.warehouse: return this.isEasy ? 50 : 60;
-                case localeTypes.camp: 
-                case localeTypes.tradingpartner: 
-                    return 20;
-                case localeTypes.hut:
-                case localeTypes.hermit: 
-                    return 30;
-                case localeTypes.caravan: return 30;
-                default: return 30;
-            }
+            return 50;
         },
         
         getStaminaRequirement: function () {
+            var maxCost = WorldCreatorConstants.MAX_SCOUT_LOCALE_STAMINA_COST;
+            var minCost = 100;
+            var difficulty = 0.5;
             switch (this.type) {
-                case localeTypes.factory: return 800;
-                case localeTypes.house: return 200;
-                case localeTypes.lab: return 600;
-                case localeTypes.grove: return 100;
-                case localeTypes.market: return 200;
-                case localeTypes.maintenance: return 750;
-                case localeTypes.transport: return 400;
-                case localeTypes.sewer: return 700;
-                case localeTypes.warehouse: return 100;
-                case localeTypes.camp: 
-                case localeTypes.tradingpartner:
-                    return 200;
-                case localeTypes.hut: return 300;
-                case localeTypes.hermit: return 400;
-                case localeTypes.caravan: return 400;
+                case localeTypes.factory: difficulty = 1; break;
+                case localeTypes.house: difficulty = 0.15; break;
+                case localeTypes.lab: difficulty = 0.85; break;
+                case localeTypes.grove: difficulty = 0; break;
+                case localeTypes.market: difficulty = 0.15; break;
+                case localeTypes.maintenance: difficulty = 1; break;
+                case localeTypes.transport: difficulty = 0.5; break;
+                case localeTypes.sewer: difficulty = 1; break;
+                case localeTypes.warehouse: difficulty = 0; break;
+                case localeTypes.camp: difficulty = 0.15; break;
+                case localeTypes.tradingpartner: difficulty = 0.15; break;
+                case localeTypes.hut: difficulty = 0.35; break;
+                case localeTypes.hermit: difficulty = 0.5; break;
+                case localeTypes.caravan: difficulty = 0.4; break;
                 default: return 20;
             }
+            return Math.floor((minCost + (maxCost - minCost) * difficulty) / 100) * 100;
         },
         
         getResourceBonus: function (unlockedResources) {
@@ -133,7 +121,10 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 					return "u";
 			}
 		},
-		
+        
+        getBracket: function () {
+            return this.isEarly ? LocaleConstants.LOCALE_BRACKET_EARLY : LocaleConstants.LOCALE_BRACKET_LATE;
+        },
     });
 
     return LocaleVO;

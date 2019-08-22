@@ -8,10 +8,23 @@ define([
 ], function (Ash, ResourcesVO, WorldCreatorRandom, WorldCreatorConstants, LevelConstants) {
 
     var WorldCreatorHelper = {
+        
+        camplessLevelOrdinals: {},
+        
+        addCriticalPath: function (worldVO, pathStartPos, pathEndPos, pathType) {
+            var path = WorldCreatorRandom.findPath(worldVO, pathStartPos, pathEndPos);
+            for (var j = 0; j < path.length; j++) {
+                var levelVO = worldVO.getLevel(path[j].level);
+                levelVO.getSector(path[j].sectorX, path[j].sectorY).addToCriticalPath(pathType);
+            }
+        },
 		
 		getSectorType: function (seed, level, x, y) {
             var sector = x + y + 2000;
 			var topLevel = this.getHighestLevel(seed);
+            if (level === 13 && x === WorldCreatorConstants.FIRST_CAMP_X && y === WorldCreatorConstants.FIRST_CAMP_Y)
+                return WorldCreatorConstants.SECTOR_TYPE_SLUM;
+            
 			var sectorType = WorldCreatorConstants.SECTOR_TYPE_MAINTENANCE;
 			if (level > topLevel - 5) {
 				// Recent mostly residential and commercial area
@@ -63,25 +76,25 @@ define([
                 break;
             case WorldCreatorConstants.SECTOR_TYPE_INDUSTRIAL:
                 result.water = waterRandomPart > 0.9 ? 1 : 0;
-                result.metal = 7;
+                result.metal = 8;
                 result.tools = (l > 13) ? WorldCreatorRandom.random(seed + l * x / y * 44 + 6) > 0.95 ? 1 : 0 : 0;
                 result.rope = WorldCreatorRandom.random(seed + l * x / y * 44 + 6) > 0.90 ? 1 : 0;
                 result.fuel = WorldCreatorRandom.random(seed / (l + 5) + x * x * y + 66) > 0.90 ? 1 : 0;
                 break;
             case WorldCreatorConstants.SECTOR_TYPE_MAINTENANCE:
-                result.metal = 7;
+                result.metal = 10;
                 result.rope = WorldCreatorRandom.random(seed + l * x / y * 44 + 6) > 0.90 ? 1 : 0;
                 result.fuel = WorldCreatorRandom.random(seed / (l + 5) + x * x * y + 66) > 0.90 ? 1 : 0;
                 result.tools = (l > 13) ? WorldCreatorRandom.random(seed + l * x / y * 44 + 6) > 0.90 ? 1 : 0 : 0;
                 break;
             case WorldCreatorConstants.SECTOR_TYPE_COMMERCIAL:
                 result.water = waterRandomPart > 0.85 ? 2 : 0;
-                result.metal = 3;
+                result.metal = 2;
                 result.food = Math.round(sectorAbundanceFactor * 10);
                 result.medicine = WorldCreatorRandom.random(seed / (l + 5) + x * x * y + 66) > 0.99 ? 1 : 0;
                 break;
             case WorldCreatorConstants.SECTOR_TYPE_SLUM:
-                result.metal = 5;
+                result.metal = 7;
                 result.food = WorldCreatorRandom.random(seed / (l+10) + x * y * 63) > 0.75 ? Math.round(sectorAbundanceFactor * 5 + stateOfRepair / 2) : 0;
                 result.water = waterRandomPart > 0.75 ? 1 : 0;
                 result.rope = WorldCreatorRandom.random(seed + l * x / y * 44 + 6) > 0.85 ? 1 : 0;
@@ -180,12 +193,23 @@ define([
         },
 		
 		getBottomLevel: function (seed) {
-			return 3 - Math.ceil(WorldCreatorRandom.random(seed)*6);
+            switch (seed % 5) {
+                case 0: return 0;
+                case 1: return 1;
+                case 2: return -1;
+                case 3: return 1;
+                case 4: return 0;
+            }
 		},
 		
 		getHighestLevel: function (seed) {
-            var bottomLevel = this.getBottomLevel(seed);
-			return Math.max(bottomLevel+WorldCreatorConstants.LEVEL_NUMBER_MIN-1, 14+WorldCreatorConstants.CAMPS_AFTER_GROUND);
+            switch (seed % 5) {
+                case 0: return 25;
+                case 1: return 26;
+                case 2: return 25;
+                case 3: return 26;
+                case 4: return 24;
+            }
 		},
 		
 		getLevelOrdinal: function(seed, level) {
@@ -211,17 +235,18 @@ define([
             var camplessLevelOrdinals = this.getCamplessLevelOrdinals(seed);
 			var levelOrdinal = this.getLevelOrdinal(seed, level);
 			var ordinal = 0;
-			for (var i = 0; i < levelOrdinal; i++) {
+			for (var i = 1; i <= levelOrdinal; i++) {
 				if (camplessLevelOrdinals.indexOf(i) < 0) ordinal++;
 			}
 			return ordinal;
 		},
         
         getLevelOrdinalForCampOrdinal: function (seed, campOrdinal) {
+            // this assumes camplessLevelOrdinals are sorted from smallest to biggest
             var levelOrdinal = campOrdinal;
             var camplessLevelOrdinals = this.getCamplessLevelOrdinals(seed);
             for (var i = 0; i < camplessLevelOrdinals.length; i++) {
-                if (camplessLevelOrdinals[i] <= campOrdinal) 
+                if (camplessLevelOrdinals[i] <= levelOrdinal) 
                     levelOrdinal++;
             }
             return levelOrdinal;
@@ -230,60 +255,103 @@ define([
         isCampableLevel: function (seed, level) {
             var camplessLevelOrdinals = this.getCamplessLevelOrdinals(seed);            
             var levelOrdinal = this.getLevelOrdinal(seed, level);
-            return camplessLevelOrdinals.indexOf(levelOrdinal) < 0;
+            var campOrdinal = this.getCampOrdinal(seed, level);
+            return camplessLevelOrdinals.indexOf(levelOrdinal) < 0 && campOrdinal <= WorldCreatorConstants.CAMP_ORDINAL_LIMIT;
         },
         
         getNotCampableReason: function (seed, level) {
             if (this.isCampableLevel(seed, level)) return null;
+            
+            if (level === 14) return LevelConstants.UNCAMPABLE_LEVEL_TYPE_POLLUTION;
+            
+            var campOrdinal = this.getCampOrdinal(seed, level);
+            if (campOrdinal > WorldCreatorConstants.CAMP_ORDINAL_LIMIT)
+                return LevelConstants.UNCAMPABLE_LEVEL_TYPE_ORDINAL_LIMIT;
+            
             var levelOrdinal = this.getLevelOrdinal(seed, level);
             var rand = WorldCreatorRandom.random(seed % 4 + level + level * 8 + 88);
-            if (rand < 0.33 && levelOrdinal < WorldCreatorConstants.MIN_LEVEL_ORDINAL_HAZARD_RADIATION) 
+            if (rand < 0.33 && levelOrdinal >= WorldCreatorConstants.MIN_LEVEL_ORDINAL_HAZARD_RADIATION) 
                 return LevelConstants.UNCAMPABLE_LEVEL_TYPE_RADIATION;
-            if (rand < 0.66 && WorldCreatorConstants.MIN_LEVEL_HAZARD_POISON) 
+            if (rand < 0.66 && levelOrdinal >= WorldCreatorConstants.MIN_LEVEL_HAZARD_POISON) 
                 return LevelConstants.UNCAMPABLE_LEVEL_TYPE_POLLUTION;
             return LevelConstants.UNCAMPABLE_LEVEL_TYPE_SUPERSTITION;
         },
 		
 		getCamplessLevelOrdinals: function (seed) {
-            var camplessLevelOrdinals = [];
-            
-            var camplessLvlFreq;
-            var camplessLvlFreqSmall;
-            var camplessLvlFreqBig;
-            var numCamplessLvls;
-            var groundLvlOrdinal = this.getLevelOrdinal(seed, this.getBottomLevel(seed));
-			var totalLevels = this.getHighestLevel(seed) - this.getBottomLevel(seed) + 1;
-			
-			// before ground
-			numCamplessLvls = groundLvlOrdinal - WorldCreatorConstants.CAMPS_BEFORE_GROUND;
-			camplessLvlFreq = (groundLvlOrdinal-3)/(numCamplessLvls);
-			camplessLvlFreqSmall = camplessLvlFreq < 2 ? 1 : camplessLvlFreq;
-			camplessLvlFreqBig = Math.max(2, camplessLvlFreq);
-			for (var i = 1; i <= numCamplessLvls; i++) {
-				 if(i == 1)
-					camplessLevelOrdinals.push(groundLvlOrdinal - Math.floor(camplessLvlFreqSmall));
-				 else if(i == 2)
-					camplessLevelOrdinals.push(Math.ceil(groundLvlOrdinal - camplessLvlFreqSmall * 2));
-				 else
-					camplessLevelOrdinals.push(Math.ceil(camplessLevelOrdinals[camplessLevelOrdinals.length-1] - camplessLvlFreqBig));
-			}
-			
-			// after ground	
-			var numLevelsAfterGround = totalLevels - groundLvlOrdinal;
-			numCamplessLvls = numLevelsAfterGround - WorldCreatorConstants.CAMPS_AFTER_GROUND;
-			camplessLvlFreq = (numLevelsAfterGround-1)/(numCamplessLvls);
-			camplessLvlFreqSmall = camplessLvlFreq < 2 ? 1 : camplessLvlFreq;
-			camplessLvlFreqBig = Math.max(2, camplessLvlFreq);
-			for (var i = 1; i <= numCamplessLvls; i++) {
-				 if(i == 1)
-					camplessLevelOrdinals.push(groundLvlOrdinal + 1);
-				 else if(i == 2)
-					camplessLevelOrdinals.push(Math.ceil(groundLvlOrdinal + camplessLvlFreqSmall));
-				 else
-					camplessLevelOrdinals.push(Math.floor(camplessLevelOrdinals[camplessLevelOrdinals.length-1] + camplessLvlFreqBig));
-			}
-			
-			return camplessLevelOrdinals;
+            if (!this.camplessLevelOrdinals[seed]) {
+                var camplessLevelOrdinals = [];
+
+                switch (seed % 5) {
+                    case 0:
+                        camplessLevelOrdinals.push(25);
+                        camplessLevelOrdinals.push(23);
+                        camplessLevelOrdinals.push(20);
+                        camplessLevelOrdinals.push(17);
+                        camplessLevelOrdinals.push(14);
+                        camplessLevelOrdinals.push(15);
+                        camplessLevelOrdinals.push(12);
+                        camplessLevelOrdinals.push(10);
+                        camplessLevelOrdinals.push(8);
+                        camplessLevelOrdinals.push(5);
+                        camplessLevelOrdinals.push(3);
+                        break;
+                    case 1:
+                        camplessLevelOrdinals.push(25);
+                        camplessLevelOrdinals.push(23);
+                        camplessLevelOrdinals.push(21);
+                        camplessLevelOrdinals.push(19);
+                        camplessLevelOrdinals.push(17);
+                        camplessLevelOrdinals.push(14);
+                        camplessLevelOrdinals.push(13);
+                        camplessLevelOrdinals.push(11);
+                        camplessLevelOrdinals.push(9);
+                        camplessLevelOrdinals.push(6);
+                        camplessLevelOrdinals.push(3);
+                        break;
+                    case 2:
+                        camplessLevelOrdinals.push(26);
+                        camplessLevelOrdinals.push(24);
+                        camplessLevelOrdinals.push(22);
+                        camplessLevelOrdinals.push(19);
+                        camplessLevelOrdinals.push(16);
+                        camplessLevelOrdinals.push(15);
+                        camplessLevelOrdinals.push(13);
+                        camplessLevelOrdinals.push(11);
+                        camplessLevelOrdinals.push(9);
+                        camplessLevelOrdinals.push(7);
+                        camplessLevelOrdinals.push(5);
+                        camplessLevelOrdinals.push(3);
+                        break;
+                    case 3:
+                        camplessLevelOrdinals.push(25);
+                        camplessLevelOrdinals.push(23);
+                        camplessLevelOrdinals.push(21);
+                        camplessLevelOrdinals.push(18);
+                        camplessLevelOrdinals.push(16);
+                        camplessLevelOrdinals.push(14);
+                        camplessLevelOrdinals.push(13);
+                        camplessLevelOrdinals.push(11);
+                        camplessLevelOrdinals.push(8);
+                        camplessLevelOrdinals.push(6);
+                        camplessLevelOrdinals.push(3);
+                        break;
+                    case 4:
+                        camplessLevelOrdinals.push(23);
+                        camplessLevelOrdinals.push(20);
+                        camplessLevelOrdinals.push(17);
+                        camplessLevelOrdinals.push(15);
+                        camplessLevelOrdinals.push(14);
+                        camplessLevelOrdinals.push(12);
+                        camplessLevelOrdinals.push(10);
+                        camplessLevelOrdinals.push(7);
+                        camplessLevelOrdinals.push(5);
+                        camplessLevelOrdinals.push(3);
+                        break;
+                }
+                
+                this.camplessLevelOrdinals[seed] = camplessLevelOrdinals.sort();
+            }
+			return this.camplessLevelOrdinals[seed];
 		},
 		
 		isDarkLevel: function (seed, level) {

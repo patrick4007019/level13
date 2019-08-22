@@ -1,6 +1,9 @@
 // Helper methods related to player actions (costs, requirements, descriptions) - common definitions for all actions
 define([
     'ash',
+    'game/GameGlobals',
+    'game/GlobalSignals',
+    'game/constants/GameConstants',
     'game/constants/PlayerActionConstants',
     'game/constants/LocaleConstants',
     'game/constants/FightConstants',
@@ -10,47 +13,39 @@ define([
     'game/components/sector/FightEncounterComponent',
     'game/nodes/PlayerLocationNode',
     'game/nodes/player/PlayerStatsNode',
-    'game/systems/FaintingSystem',
-    'game/systems/SaveSystem'
+    'game/systems/FaintingSystem'
 ], function (
-	Ash, PlayerActionConstants, LocaleConstants, FightConstants, 
-    EnemiesComponent, SectorControlComponent, FightComponent, FightEncounterComponent, 
-    PlayerLocationNode, PlayerStatsNode, 
-    FaintingSystem, SaveSystem
+	Ash, GameGlobals, GlobalSignals, GameConstants, PlayerActionConstants, LocaleConstants, FightConstants,
+    EnemiesComponent, SectorControlComponent, FightComponent, FightEncounterComponent,
+    PlayerLocationNode, PlayerStatsNode,
+    FaintingSystem
 ) {
     var FightHelper = Ash.Class.extend({
-		
-		uiFunctions: null,
-		playerActionsHelper: null,
-        playerActionResultsHelper: null,
-		
+
 		playerLocationNodes: null,
         playerStatsNodes: null,
-		
+
 		pendingEnemies: 0,
+        totalEnemies: 0,
 		pendingWinCallback: null,
 		pendingFleeCallback: null,
 		pendingLoseCallback: null,
-		
-		constructor: function (engine, playerActionsHelper, playerActionResultsHelper) {
-			this.playerActionsHelper = playerActionsHelper;
-            this.playerActionResultsHelper = playerActionResultsHelper;
+
+		constructor: function (engine) {
 			this.engine = engine;
             this.playerLocationNodes = engine.getNodeList(PlayerLocationNode);
             this.playerStatsNodes = engine.getNodeList(PlayerStatsNode);
 		},
 
 		handleRandomEncounter: function (action, winCallback, fleeCallback, loseCallback) {
-			var sectorControlComponent = this.playerLocationNodes.head.entity.get(SectorControlComponent);
-			
-			var baseActionID = this.playerActionsHelper.getBaseActionID(action);
-			var localeId = FightConstants.getEnemyLocaleId(baseActionID, action);
+			var baseActionID = GameGlobals.playerActionsHelper.getBaseActionID(action);
 			var hasEnemies = this.hasEnemiesCurrentLocation(action);
-			if (hasEnemies) {
+			if (hasEnemies && GameGlobals.gameState.unlockedFeatures.camp) {
                 var vision = this.playerStatsNodes.head.vision.value;
-				var encounterProbability =  PlayerActionConstants.getRandomEncounterProbability(baseActionID, vision);
+				var encounterProbability = PlayerActionConstants.getRandomEncounterProbability(baseActionID, vision);
 				if (Math.random() < encounterProbability) {
-					this.pendingEnemies = Math.min(this.getEnemyCount(action), sectorControlComponent.getCurrentEnemies(localeId));
+					this.pendingEnemies = this.getEnemyCount(action);
+                    this.totalEnemies = this.pendingEnemies;
 					this.pendingWinCallback = winCallback;
 					this.pendingFleeCallback = fleeCallback;
 					this.pendingLoseCallback = loseCallback;
@@ -61,48 +56,50 @@ define([
 
 			winCallback();
 		},
-        
+
         hasEnemiesCurrentLocation: function(action) {
-            if (!this.playerLocationNodes.head)
-                return false;
-            var baseActionID = this.playerActionsHelper.getBaseActionID(action); 
-            var localeId = FightConstants.getEnemyLocaleId(baseActionID, action);    
-            var enemiesComponent = this.playerLocationNodes.head.entity.get(EnemiesComponent);     
+            if (!this.playerLocationNodes.head) return false;
+            var baseActionID = GameGlobals.playerActionsHelper.getBaseActionID(action);
+            var localeId = FightConstants.getEnemyLocaleId(baseActionID, action);
+            var enemiesComponent = this.playerLocationNodes.head.entity.get(EnemiesComponent);
             var sectorControlComponent = this.playerLocationNodes.head.entity.get(SectorControlComponent);
-            return enemiesComponent.hasEnemies() && !sectorControlComponent.hasControlOfLocale(localeId);
+            return enemiesComponent.hasEnemies || !sectorControlComponent.hasControlOfLocale(localeId);
         },
-        
+
         initFight: function (action) {
-			console.log("init fight " + action + " " + this.pendingEnemies);
             var sector = this.playerLocationNodes.head.entity;
             sector.remove(FightComponent);
-			
             var enemiesComponent = sector.get(EnemiesComponent);
             enemiesComponent.selectNextEnemy();
-			sector.add(new FightEncounterComponent(enemiesComponent.getNextEnemy(), action));
-			this.uiFunctions.showFight();
+            if (GameConstants.logInfo) console.log("init fight: " + action);
+			sector.add(new FightEncounterComponent(enemiesComponent.getNextEnemy(), action, this.pendingEnemies, this.totalEnemies));
+			GameGlobals.uiFunctions.showFight();
         },
-        
+
         startFight: function () {
+            if (GameConstants.logInfo) console.log("start fight");
             // TODO move to PlayerActionFunctions
-            if (this.playerActionsHelper.checkAvailability("fight", true)) {
-                this.playerActionsHelper.deductCosts("fight");
+            if (GameGlobals.playerActionsHelper.checkAvailability("fight", true)) {
+                GameGlobals.playerActionsHelper.deductCosts("fight");
                 var sector = this.playerLocationNodes.head.entity;
 				var encounterComponent = sector.get(FightEncounterComponent);
 				if (encounterComponent && encounterComponent.enemy) {
 					sector.add(new FightComponent(encounterComponent.enemy));
 				} else {
-					console.log("WARN: Encounter or enemy not initialized - cannot start fight.");
+					if (GameGlobals.logWarnings) console.log("WARN: Encounter or enemy not initialized - cannot start fight.");
 				}
+            } else {
+                if (GameGlobals.logWarnings) console.log("WARN: Can't start fight- availability check failed");
             }
         },
-        
+
         endFight: function () {
             var sector = this.playerLocationNodes.head.entity;
 			var encounterComponent = sector.get(FightEncounterComponent);
-            if (sector.has(FightComponent)) {
-                var fightComponent = sector.get(FightComponent);
+            var fightComponent = sector.get(FightComponent);
+            if (fightComponent) {
 				if (fightComponent.won) {
+                    GameGlobals.playerActionResultsHelper.collectRewards(false, fightComponent.resultVO);
 					sector.get(EnemiesComponent).resetNextEnemy();
 					this.pendingEnemies--;
 					if (this.pendingEnemies > 0) {
@@ -110,7 +107,6 @@ define([
 						return;
 					}
 					if (this.pendingWinCallback) {
-                        this.playerActionResultsHelper.collectRewards(false, fightComponent.resultVO);
                         this.pendingWinCallback();
                     }
 				} else {
@@ -120,18 +116,18 @@ define([
             } else {
 				if (this.pendingFleeCallback) this.pendingFleeCallback();
 			}
-			
-            this.uiFunctions.popupManager.closePopup("fight-popup");
+            GameGlobals.uiFunctions.popupManager.closePopup("fight-popup");
             sector.remove(FightComponent);
 			this.pendingWinCallback = null;
 			this.pendingFleeCallback = null;
 			this.pendingLoseCallback = null;
+            GlobalSignals.fightEndedSignal.dispatch();
             this.save();
         },
-		
+
 		getEnemyCount: function (action) {
 			var sectorControlComponent = this.playerLocationNodes.head.entity.get(SectorControlComponent);
-			var baseActionID = this.playerActionsHelper.getBaseActionID(action);
+			var baseActionID = GameGlobals.playerActionsHelper.getBaseActionID(action);
 			var localeId = FightConstants.getEnemyLocaleId(baseActionID, action);
 			switch (baseActionID) {
 				case "clear_workshop":
@@ -140,12 +136,11 @@ define([
 				default: return 1;
 			}
 		},
-        
+
         save: function () {
-            var saveSystem = this.engine.getSystem(SaveSystem);
-            saveSystem.save();
+            GlobalSignals.saveGameSignal.dispatch();
         },
-        
+
     });
 
     return FightHelper;

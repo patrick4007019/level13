@@ -1,16 +1,22 @@
 // Marks that given entity (should be a Sector) contains a Camp
-define(['ash', 'game/constants/CampConstants'], function (Ash, CampConstants) {
+define(['ash', 'game/constants/CampConstants', 'game/vos/RaidVO'], function (Ash, CampConstants, RaidVO) {
+    
     var CampComponent = Ash.Class.extend({
         
-        
+        id: "",
         population: 0,
+        maxPopulation: 0, // maximum population ever reached in this camp
+        populationChangePerSec: 0,
         rumourpool: 0,
         rumourpoolchecked: false,
         assignedWorkers: {},
         campName: "",
+        lastRaid: null,
         
-        constructor: function () {
+        constructor: function (id) {
+            this.id = id;
             this.population = 0;
+            this.maxPopulation = 0;
             this.rumourpool = 0;
             this.rumourpoolchecked = false;
             this.assignedWorkers = {};
@@ -18,6 +24,7 @@ define(['ash', 'game/constants/CampConstants'], function (Ash, CampConstants) {
                 this.assignedWorkers[worker] = 0;
             }
             this.campName = "";
+            this.lastRaid = new RaidVO(null);
         },
         
         getFreePopulation: function () {
@@ -33,17 +40,18 @@ define(['ash', 'game/constants/CampConstants'], function (Ash, CampConstants) {
         },
         
         addPopulation: function (value) {
+            var oldPopulation = this.population;
             this.population += value;
-            this.rumourpool += value * CampConstants.POOL_RUMOURS_PER_POPULATION;
-        },
-        
-        setPopulation: function (value) {
-            var rumourpoolchange = (value - this.population) * CampConstants.POOL_RUMOURS_PER_POPULATION;
-            this.population = value;
-            this.rumourpool += rumourpoolchange;
+            this.maxPopulation = Math.max(this.population, this.maxPopulation);
+            var change = this.population - oldPopulation;
+            this.rumourpool += change * CampConstants.POOL_RUMOURS_PER_POPULATION;
         },
         
         getType: function () {
+            return "Camp";
+        },
+        
+        getSaveKey: function () {
             return "Camp";
         },
         
@@ -53,7 +61,7 @@ define(['ash', 'game/constants/CampConstants'], function (Ash, CampConstants) {
             } else {
                 return this.getType();
             }
-        }
+        },
     });
 
     return CampComponent;

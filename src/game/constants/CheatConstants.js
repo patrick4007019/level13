@@ -22,11 +22,18 @@ define(function () {
         CHEAT_NAME_TECHS: "techs",
         CHEAT_NAME_BLUEPRINT: "blueprint",
         CHEAT_NAME_BLUEPRINTS: "blueprints",
+        CHEAT_NAME_TRADE_PARTNERS: "tradepartners",
+        CHEAT_NAME_WORKSHOPS: "workshops",
         CHEAT_NAME_ITEM: "item",
+        CHEAT_NAME_EQUIP_BEST: "equipBest",
         CHEAT_NAME_FOLLOWER: "follower",
         CHEAT_NAME_PERK: "perk",
         CHEAT_NAME_REVEAL_MAP: "revealMap",
+        CHEAT_NAME_DEBUG_MAP: "debugMap",
         CHEAT_NAME_SCOUT_LEVEL: "scoutLevel",
+        CHEAT_NAME_TRADER: "trader",
+        CHEAT_NAME_RAID: "raid",
+        CHEAT_NAME_RESET_BUILDING_SPOTS: "resetBuildingSpots",
         
     };
     return CheatConstants;

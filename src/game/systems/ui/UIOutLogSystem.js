@@ -1,8 +1,9 @@
 define([
-    'ash', 'game/GlobalSignals', 'game/nodes/LogNode', 'game/constants/UIConstants',
-], function (Ash, GlobalSignals, LogNode, UIConstants) {
+    'ash', 'game/GameGlobals', 'game/GlobalSignals', 'game/nodes/LogNode', 'game/constants/UIConstants',
+], function (Ash, GameGlobals, GlobalSignals, LogNode, UIConstants) {
     var UIOutLogSystem = Ash.System.extend({
 	
+        gameState: null,
 		logNodes: null,
 		
 		lastUpdateTimeStamp: 0,
@@ -27,7 +28,8 @@ define([
         },
 
         update: function (time) {
-            if ($(".popup:visible").length > 0) return;
+            if (GameGlobals.gameState.uiStatus.isHidden) return;
+            if (GameGlobals.gameState.isPaused) return;
 			var timeStamp = new Date().getTime();
 			var isTime = timeStamp - this.lastUpdateTimeStamp > this.updateFrequency;
 			var hasNewMessages = false;
@@ -76,8 +78,9 @@ define([
 				if (msg.loadedFromSave)
 					li += ' class="log-loaded"';
 				li += '><span class="time">' + UIConstants.getTimeSinceText(msg.time) + " ago" + '</span> ';
+                if (msg.campLevel) li += '<span class="msg-camp-level"> (level ' + msg.campLevel + ')</span>';
 				li += '<span class="msg">' + msg.text;
-				if (msg.combined > 0) li += '<span class="msg-count"> (x' + (msg.combined + 1) + ")</span>";
+				if (msg.combined > 0) li += '<span class="msg-count"> (x' + (msg.combined + 1) + ')</span>';
 				li += '</span></li>';
 				liMsg = $(li);
 				$("#log ul").prepend(liMsg);

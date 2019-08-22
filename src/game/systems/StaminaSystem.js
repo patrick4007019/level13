@@ -1,26 +1,34 @@
 define([
-    'ash', 
-    'game/constants/GameConstants', 
-    'game/constants/LogConstants', 
-    'game/constants/PlayerStatConstants', 
+    'ash',
+    'game/GameGlobals',
+    'game/GlobalSignals',
+    'game/constants/GameConstants',
+    'game/constants/LogConstants',
+    'game/constants/PlayerStatConstants',
     'game/constants/PerkConstants',
-    'game/nodes/player/StaminaNode', 
-    'game/components/common/LogMessagesComponent'
-], function (Ash, GameConstants, LogConstants, PlayerStatConstants, PerkConstants, StaminaNode, LogMessagesComponent) {
+    'game/nodes/player/StaminaNode',
+    'game/components/common/LogMessagesComponent',
+    'game/components/player/PlayerActionComponent'
+], function (Ash, GameGlobals, GlobalSignals, GameConstants, LogConstants, PlayerStatConstants, PerkConstants, StaminaNode, LogMessagesComponent, PlayerActionComponent) {
     var StaminaSystem = Ash.System.extend({
         
         gameState: null,
         nodeList: null,
+        
+        warningLimit: -1,
         isWarning: true, // skip warning log on first update
 
-        constructor: function (gameState, playerActionsHelper) {
-            this.gameState = gameState;
-            this.playerActionsHelper = playerActionsHelper;
+        constructor: function () {
         },
 
         addToEngine: function (engine) {
             this.engine = engine;
             this.nodeList = engine.getNodeList(StaminaNode);
+            
+            var sys = this;
+            GlobalSignals.playerMovedSignal.add(function () { sys.updateWarningLimit(); });
+            GlobalSignals.healthChangedSignal.add(function () { sys.updateWarningLimit(); });
+            GlobalSignals.gameShownSignal.add(function () { sys.updateWarningLimit(); });
         },
 
         removeFromEngine: function (engine) {
@@ -29,7 +37,7 @@ define([
         },
 
         update: function (time) {
-            if (this.gameState.isPaused) return;
+            if (GameGlobals.gameState.isPaused) return;
             for (var node = this.nodeList.head; node; node = node.next) {
                 this.updateNode(node, time + this.engine.extraUpdateTime);
             }
@@ -38,43 +46,58 @@ define([
         updateNode: function (node, time) {
 			var staminaComponent = node.stamina;
 			var perksComponent = node.perks;
+            var busyComponent = node.entity.get(PlayerActionComponent);
+            var isResting = busyComponent && busyComponent.getLastActionName() == "use_in_home";
+            var isHealing = busyComponent && busyComponent.getLastActionName() == "use_in_hospital";
 			
+            // health
 			var injuryEffects = perksComponent.getTotalEffect(PerkConstants.perkTypes.injury);
 			var healthEffects = perksComponent.getTotalEffect(PerkConstants.perkTypes.health);
 			healthEffects = healthEffects === 0 ? 1 : healthEffects;
-			staminaComponent.health = Math.max(PlayerStatConstants.HEALTH_MINIMUM, Math.round(200 * healthEffects * injuryEffects) / 2);
+            var newHealth = Math.max(PlayerStatConstants.HEALTH_MINIMUM, Math.round(200 * healthEffects * injuryEffects) / 2);
+            var oldHealth = staminaComponent.health;
+			staminaComponent.health = newHealth;
+            
+            if (newHealth !== oldHealth)
+                GlobalSignals.healthChangedSignal.dispatch();
 			
-			var healthVal = staminaComponent.health;
-            var staminaPerS = 2 * staminaComponent.health / 100 / 60 * GameConstants.gameSpeedExploration;
-            var staminaPerSBase = staminaPerS / staminaComponent.health * 100;
-            var staminaPerSHealth = staminaPerS - staminaPerSBase;
-			
-			staminaComponent.stamina += time * staminaPerS;
+            // stamina
+            var healthVal = staminaComponent.health;
+            var maxVal = healthVal * PlayerStatConstants.HEALTH_TO_STAMINA_FACTOR;
+            var staminaPerSec = 0;
             staminaComponent.accSources = [];
-			staminaComponent.accSources[0] = { source: "Base", amount: staminaPerSBase };
-			staminaComponent.accSources[1] = { source: "Health", amount: staminaPerSHealth };
-			staminaComponent.accumulation = staminaPerS;
-			
-			if (node.position.inCamp) {
-                var staminaPerSCamp = staminaPerS * 9;
-				staminaComponent.stamina += time * staminaPerSCamp;
-				staminaComponent.accSources[2] = { source: "Being in camp", amount: staminaPerSCamp };
-				staminaComponent.accumulation += staminaPerS;
-			}
-				
-			if (staminaComponent.stamina > healthVal * PlayerStatConstants.HEALTH_TO_STAMINA_FACTOR) {
-				staminaComponent.stamina = healthVal * PlayerStatConstants.HEALTH_TO_STAMINA_FACTOR;
+            var addAccumulation = function (sourceName, value) {
+                var staminaPerSecSource = Math.floor(value * GameConstants.gameSpeedCamp * 100) / 100;
+                staminaPerSec += staminaPerSecSource;
+                staminaComponent.accSources.push({ source: sourceName, amount: staminaPerSecSource });
+            };
+            if (node.position.inCamp) {
+                addAccumulation("Base",  2 * staminaComponent.health / 10 / 60);
+            }
+            if (isResting) {
+                var timeLeft = busyComponent.getBusyTimeLeft();
+                addAccumulation("Resting",  Math.floor((maxVal - staminaComponent.stamina) / timeLeft * 4) / 4);
+            }
+            if (isHealing) {
+                var timeLeft = busyComponent.getBusyTimeLeft();
+                addAccumulation("Treatment",  Math.floor((maxVal - staminaComponent.stamina) / timeLeft * 4) / 4);
+            }
+			staminaComponent.stamina += time * staminaPerSec;
+			staminaComponent.accumulation = staminaPerSec;
+            
+			if (staminaComponent.stamina > maxVal) {
+				staminaComponent.stamina = maxVal;
 			}
 				
 			if (staminaComponent.stamina < 0) {
 				staminaComponent.stamina = 0;
 			}
             
-            var staminaWarningLimit = PlayerStatConstants.getStaminaWarningLimit(this.playerActionsHelper, staminaComponent);
-            var isWarning = staminaComponent.stamina <= staminaWarningLimit;
+            // stamina warning
+            var isWarning = staminaComponent.stamina <= this.warningLimit;
             if (isWarning && !this.isWarning) {
                 var logComponent = node.entity.get(LogMessagesComponent);
-                var hasCamp = this.gameState.unlockedFeatures.camp;
+                var hasCamp = GameGlobals.gameState.unlockedFeatures.camp;
                 if (node.position.inCamp)
                     logComponent.addMessage(LogConstants.MSG_ID_STAMINA_WARNING, "Getting tired. Should have a rest soon.");
                 else if (hasCamp)
@@ -83,6 +106,11 @@ define([
                     logComponent.addMessage(LogConstants.MSG_ID_STAMINA_WARNING, "Getting tired. Should find a place to rest soon.");
             }
             this.isWarning = isWarning;
+        },
+        
+        updateWarningLimit: function () {
+            if (GameGlobals.gameState.uiStatus.isHidden) return;
+            this.warningLimit = PlayerStatConstants.getStaminaWarningLimit(this.nodeList.head.stamina);
         }
     });
 

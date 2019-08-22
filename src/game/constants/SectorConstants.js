@@ -1,4 +1,5 @@
 define(['ash',
+    'game/GameGlobals',
 	'game/constants/LocaleConstants',
     'game/components/common/VisitedComponent',
     'game/components/common/RevealedComponent',
@@ -6,7 +7,7 @@ define(['ash',
     'game/components/sector/SectorLocalesComponent',
     'game/components/sector/SectorControlComponent',
     'game/components/sector/improvements/WorkshopComponent',
-], function (Ash, LocaleConstants, VisitedComponent, RevealedComponent, SectorStatusComponent, SectorLocalesComponent, SectorControlComponent, WorkshopComponent) {
+], function (Ash, GameGlobals, LocaleConstants, VisitedComponent, RevealedComponent, SectorStatusComponent, SectorLocalesComponent, SectorControlComponent, WorkshopComponent) {
     
     var SectorConstants = {
 		
@@ -16,7 +17,7 @@ define(['ash',
 		MAP_SECTOR_STATUS_VISITED_SCOUTED: "scouted",
 		MAP_SECTOR_STATUS_VISITED_CLEARED: "cleared",
 		
-		getSectorStatus: function (sector, levelHelper) {
+		getSectorStatus: function (sector) {
 			if (!sector) return null;
 			
 			var isVisited = sector.has(VisitedComponent);
@@ -29,8 +30,7 @@ define(['ash',
 					var unScoutedLocales = localesComponent.locales.length - statusComponent.getNumLocalesScouted();
 					var sectorControlComponent = sector.get(SectorControlComponent);
 					var hasUnclearedWorkshop = workshopComponent != null && !sectorControlComponent.hasControlOfLocale(LocaleConstants.LOCALE_ID_WORKSHOP);
-                    var hasUnbuiltProjects = levelHelper.getAvailableProjectsForSector(sector).length > 0;
-					var isCleared = unScoutedLocales === 0 && !hasUnclearedWorkshop && !hasUnbuiltProjects;
+					var isCleared = unScoutedLocales === 0 && !hasUnclearedWorkshop;
 					if (isCleared) {
 						return this.MAP_SECTOR_STATUS_VISITED_CLEARED;
 					} else {

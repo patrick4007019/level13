@@ -1,10 +1,10 @@
 define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], function (Ash, TextConstants, ItemConstants) {
 
     var LogConstants = {
-        
+
         // story
         MSG_ID_START: "START",
-       
+
         // out actions
         MSG_ID_SCAVENGE: "SCAVENGE",
         MSG_ID_SCOUT: "SCOUT",
@@ -15,6 +15,7 @@ define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], 
         MSG_ID_WORKSHOP_CLEARED: "WORKSHOP_CLEARED",
         MSG_ID_GANG_DEFEATED: "GANG_DEFEATED",
         MSG_ID_USE_COLLECTOR_FAIL: "USE_COLLECTOR_FAIL",
+        MSG_ID_NAP: "MSG_ID_NAP",
 
         // in actions
         MSG_ID_ENTER_CAMP: "ENTER_CAMP",
@@ -26,7 +27,8 @@ define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], 
         MSG_ID_BOUGHT_UPGRADE: "MSG_ID_BOUGHT_UPGRADE",
         MSG_ID_START_SEND_CAMP: "MSG_ID_START_SEND_CAMP",
         MSG_ID_FINISH_SEND_CAMP: "MSG_ID_FINISH_SEND_CAMP",
-        
+        MSG_ID_TRADE_WITH_CARAVAN: "MSG_ID_TRADE_WITH_CARAVAN",
+
         // out atmospheric and results
         MSG_ID_ADD_HAZARD_PERK: "MSG_ID_ADD_HAZARD_PERK",
         MSG_ID_TIME_HAZARD_PERK: "MSG_ID_TIME_HAZARD_PERK",
@@ -38,13 +40,19 @@ define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], 
         MSG_ID_FAINTED: "MSG_ID_FAINTED",
         MSG_ID_DESPAIR_AVAILABLE: "MSG_ID_DESPAIR_AVAILABLE",
         MSG_ID_STAMINA_WARNING: "MSG_ID_STAMINA_WARNING",
-        
+        MSG_ID_VISION_RESET: "MSG_ID_VISION_RESET",
+
         // in atmospheric and results
         MSG_ID_POPULATION_NATURAL: "POPULATION_NATURAL",
         MSG_ID_WORKER_STATUS: "WORKER_STATUS",
         MSG_ID_CAMP_EVENT: "CAMP_EVENT",
         MSG_ID_BUILT_CAMP_LEVEL_POPULATION: "MSG_ID_BUILT_CAMP_LEVEL_POPULATION",
-        
+        MSG_ID_ENTER_LEVEL: "MSG_ID_ENTER_LEVEL",
+        MSG_ID_REPUTATION_PENALTY_FOOD: "MSG_ID_REPUTATION_PENALTY_FOOD",
+        MSG_ID_REPUTATION_PENALTY_WATER: "MSG_ID_REPUTATION_PENALTY_WATER",
+        MSG_ID_REPUTATION_PENALTY_DEFENCES: "MSG_ID_REPUTATION_PENALTY_DEFENCES",
+        MSG_ID_REPUTATION_PENALTY_HOUSING: "MSG_ID_REPUTATION_PENALTY_HOUSING",
+
         // in buildings
         MSG_ID_BUILT_CAMP: "BUILT_CAMP",
         MSG_ID_BUILT_HOUSE: "BUILT_HOUSE",
@@ -54,6 +62,7 @@ define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], 
         MSG_ID_BUILT_STORAGE: "BUILT_STORAGE",
         MSG_ID_BUILT_FORTIFICATION: "BUILT_FORTIFICATION",
         MSG_ID_BUILT_AQUEDUCT: "BUILT_AQUEDUCT",
+        MSG_ID_BUILT_STABLE: "BUILT_STABLE",
         MSG_ID_BUILT_BARRACKS: "BUILT_BARRACKS",
         MSG_ID_BUILT_SMITHY: "BUILT_SMITHY",
         MSG_ID_BUILT_APOTHECARY: "BUILT_APOTHECARY",
@@ -66,7 +75,9 @@ define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], 
         MSG_ID_BUILT_MARKET: "BUILT_MARKET",
         MSG_ID_BUILT_TRADING_POST: "BUILT_TRADING_POST",
         MSG_ID_BUILT_INN: "BUILT_INN",
-        
+        MSG_ID_BUILT_SQUARE: "MSG_ID_BUILT_SQUARE",
+        MSG_ID_BUILT_GARDEN: "MSG_ID_BUILT_GARDEN",
+
         // out buildings
         MSG_ID_BUILT_PASSAGE: "BUILT_PASSAGE",
         MSG_ID_BUILT_TRAP: "BUILT_TRAP",
@@ -76,17 +87,19 @@ define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], 
         // items
         MSG_ID_ADD_FOLLOWER: "ADD_FOLLOWER",
         MSG_ID_CRAFT_ITEM: "CRAFT_ITEM",
-	
+
 		mergedMessages: [
             ["SCAVENGE", "SCOUT", "SCOUT"],
         ],
-        
+
         getMergedMsgID: function (messages) {
             var messageIDsToMatch = [];
             for (var m = 0; m < messages.length; m++) {
-                messageIDsToMatch = messageIDsToMatch.concat(messages[m].logMsgID.split("-"));
+                if (messages[m].logsgID) {
+                    messageIDsToMatch = messageIDsToMatch.concat(messages[m].logMsgID.split("-"));
+                }
             }
-            
+
             var mergeIDs;
             var allMatch;
             var messageID;
@@ -104,63 +117,66 @@ define(['ash', 'game/constants/TextConstants', 'game/constants/ItemConstants'], 
             }
             return null;
         },
-        
+
         getMergedMsgText: function (mergedId) {
             switch (mergedId) {
                 case "SCAVENGE-SCOUT-SCOUT":
-                    return "Continued exporing.";
-                
+                    return "Continued exploring.";
+
                 default:
                     console.log("WARN: text not defined for merged log message: " + mergedId);
                     return String(mergedId);
             }
         },
-        
+
         getLostItemMessage: function (resultVO) {
             var template = TextConstants.getLogItemsText(resultVO.lostItems);
             template.msg = "Lost " + template.msg + ". ";
-            
-            var intros = [ 
-                "Almost fell into a crack in the street", 
-                "Fell through a rotten floor", 
-                "Dropped bag while climbing a fence", 
-                "Stumbled on some wrecked pipes", 
-                "Left a bag pocket open and some items fell out",
-                "Got scared of shadows and ran, leaving some items behind"
-            ];
-            var intro = intros[Math.floor(Math.random() * intros.length)];            
+
+            var intros = [];
+            switch (resultVO.action) {
+                default:
+                    intros.push("Almost fell into a crack in the street");
+                    intros.push("Fell through a rotten floor");
+                    intros.push("Dropped bag while climbing a fence");
+                    intros.push("Stumbled on some wrecked pipes");
+                    intros.push("Left a bag pocket open and some items fell out");
+                    intros.push("Got scared of the shadows and ran, leaving some items behind");
+                    break;
+            }
+            var intro = intros[Math.floor(Math.random() * intros.length)];
             intro = intro + ". ";
             template.msg = intro + template.msg;
-            
+
             return { msg: template.msg, replacements: template.replacements, values: template.values };
         },
-        
+
         getInjuredMessage: function (resultVO) {
             return "Got injured.";
         },
-        
+
         getDespairMessage: function (isValidDespairHunger, isValidDespairThirst, isValidDespairStamina, isValidDespairMove) {
             if (isValidDespairThirst) {
                 return "Too thirsty to go on.";
-            }     
+            }
             if (isValidDespairHunger) {
                 return "Too hungry to go on.";
             }
             return "Too tired to go on.";
         },
-        
+
         getCraftItemMessage: function (itemVO) {
-            itemDetails = "";
+            var itemDetails = "";
             switch (itemVO.id) {
                 case ItemConstants.itemDefinitions.light[0].id:
                     itemDetails = " Light will make scavenging safer.";
                     break;
             }
-            return "Crafted " + itemVO.name + "." + itemDetails;
+            return "Made " + TextConstants.addArticle(itemVO.name) + "." + itemDetails;
         },
-		
+
     }
-    
+
     return LogConstants;
-    
+
 });

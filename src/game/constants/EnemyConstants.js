@@ -22,20 +22,27 @@ function (Ash, WorldCreatorConstants, EnemyVO) {
 		},
 		
 		// saved for convenience & startup speed
-		enemyDifficultiesGroundLevelOrdinal: 0,
-		enemyDifficultiesTotalLevels: 0,
-		enemyDifficulties: {
-		},
+		enemyDifficulties: null,
         
         // For TextConstants: nouns and verbs to describe enemies
         nPest: "urban pests",
         nAnimal: "aggressive animals",
         nGangster: "bandits",
         nBot: "bots",
+        
+        gPack: "pack",
+        gGang: "gang",
+        gSwarm: "swarm",
+        gMob: "mob",
+        gFlock: "flock",
+        gHorde: "horde",
+        gCluster: "cluster",
+        
         aPatrol: "patrolled by",
         aGuard: "guarded by",
         aInfest: "infested with",
-        aCover: "covered in",
+        aOverrun: "overrun with",
+        
         dCleared: "cleared",
         dDisabled: "disabled",
         dKilled: "killed",

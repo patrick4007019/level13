@@ -1,56 +1,69 @@
 // Holds timers and cooldowns for events in a camp
 define(['ash'], function (Ash) {
-    
+
     var CampEventTimersComponent = Ash.Class.extend({
-        
-        eventEndTimestamps: {},
-        eventStartTimestamps: {},
-        
+
+        // event -> in-game seconds left
+        eventEndTimers: {},
+        eventStartTimers: {},
+        eventDurations: {},
+
         constructor: function () {
-            this.eventEndTimestamps = {};
-            this.eventStartTimestamps = {};
+            this.eventEndTimers = {};
+            this.eventStartTimers = {};
+            this.eventDurations = {};
         },
-        
+
         onEventEnded: function(event, timeToNext) {
+            this.eventEndTimers[event] = null;
             if (timeToNext) {
-                var startTimestamp = new Date().getTime() + timeToNext * 1000;
-                this.eventStartTimestamps[event] = startTimestamp;
+                this.eventStartTimers[event] = timeToNext;
             }
         },
-        
+
         onEventStarted: function(event, durationSec) {
-            var endTimeStamp = new Date().getTime() + durationSec * 1000;
-            this.eventEndTimestamps[event] = endTimeStamp;
+            this.eventEndTimers[event] = durationSec;
+            this.eventDurations[event] = durationSec;
         },
-        
-        hasTimeEnded: function(event) {
-            return this.getEventTimeLeft(event) <= 0;
+
+        removeTimer: function(event) {
+            this.eventStartTimers[event] = null;
+            this.eventEndTimers[event] = null;
+            this.eventDurations[event] = null;
         },
-        
-        getEventTimeLeft: function(event) {            
-            var timestamp = this.eventEndTimestamps[event];
-            return this.getTimeLeft(timestamp) / 1000; 
+
+        isEventScheduled: function (event) {
+            return this.eventStartTimers[event];
         },
-        
+
         isTimeToStart: function(event) {
             return this.getEventStartTimeLeft(event) <= 0;
         },
-        
-        getEventStartTimeLeft: function(event) {            
-            var timestamp = this.eventStartTimestamps[event];
-            return this.getTimeLeft(timestamp) / 1000; 
+
+        hasTimeEnded: function(event) {
+            return this.getEventTimeLeft(event) <= 0;
         },
-        
-        getTimeLeft: function(timestamp) {
-            if (timestamp) {
-                var now = new Date().getTime();
-                var diff = timestamp - now;
-                return diff;
-            } else {
+
+        getEventTimeLeft: function(event) {
+            return this.eventEndTimers[event] || 0;
+        },
+
+        getEventStartTimeLeft: function(event) {
+            return this.eventStartTimers[event];
+        },
+
+        getEventTimePercentage: function (event, log) {
+            var duration = this.eventDurations[event] || 0;
+            var timeLeft = this.eventEndTimers[event] || 0;
+            if (!duration || !timeLeft)
                 return 0;
-            }
-        }
-        
+            return (1 - timeLeft / duration) * 100
+        },
+
+        getSaveKey: function () {
+            return "CampEventTimers";
+        },
+
     });
 
     return CampEventTimersComponent;
