@@ -1,58 +1,63 @@
 define([
-    'ash', 
-    'game/systems/GameManager', 
+    'ash',
+    'game/GameGlobals',
+    'game/GlobalSignals',
+    'game/constants/GameConstants',
+    'lzstring/lz-string',
     'game/nodes/common/SaveNode'
-], function (Ash, GameManager, SaveNode) {
+], function (Ash, GameGlobals, GlobalSignals, GameConstants, LZString, SaveNode) {
     var SaveSystem = Ash.System.extend({
-	
+
         engine: null,
-		gameState: null,
-		
+
 		saveNodes:null,
-		
+
 		lastSaveTimeStamp: 0,
 		saveFrequency: 1000 * 60 * 2,
-        
+
         error: null,
 
-        constructor: function (gameState) {
-			this.gameState = gameState;
-        },
+        constructor: function () {},
 
         addToEngine: function (engine) {
             this.engine = engine;
 			this.saveNodes = engine.getNodeList(SaveNode);
 			this.lastSaveTimeStamp = new Date().getTime();
+            GlobalSignals.add(this, GlobalSignals.saveGameSignal, this.save);
+            GlobalSignals.add(this, GlobalSignals.restartGameSignal, this.onRestart);
         },
 
         removeFromEngine: function (engine) {
+            GlobalSignals.removeAll(this);
 			this.engine = null;
 			this.saveNodes = null;
         },
 
-        update: function (time) {
+        update: function () {
+            if (this.paused) return;
+            if (!GameConstants.isAutosaveEnabled) return;
 			var timeStamp = new Date().getTime();
 			if (timeStamp - this.lastSaveTimeStamp > this.saveFrequency) {
 				this.save();
 			}
         },
-	
-		save: function () {
+
+        pause: function () {
+            this.paused = true;
+        },
+
+        resume: function () {
+            this.paused = false;
+        },
+
+		save: function (isPlayerInitiated) {
+            if (this.paused) return;
+            if (!isPlayerInitiated && !GameConstants.isAutosaveEnabled) return;
             this.error = null;
 			if (typeof(Storage) !== "undefined") {
-				var entitiesObject = {};
-                var nodes = 0;
-				for (var node = this.saveNodes.head; node; node = node.next) {
-                    nodes++;
-					entitiesObject[node.save.entityKey] = this.prepareNode(node);
-				}
-                
-                // console.log("Total save size: " +  JSON.stringify(entitiesObject).length + " " + JSON.stringify(this.gameState).length + ", " + nodes + " nodes");
-                
                 try {
-                    localStorage.entitiesObject = JSON.stringify(entitiesObject);
-                    localStorage.gameState = JSON.stringify(this.gameState);
-                    localStorage.timeStamp = new Date();
+                    localStorage.save = this.getCompressedSaveJSON();
+                    console.log("Saved");
                 } catch (ex) {
                     this.error = "Failed to save.";
                 }
@@ -61,14 +66,38 @@ define([
                 this.error = "Can't save (incompatible browser).";
 			}
 		},
-	
-		prepareNode: function (node) {
+
+        getSaveJSON: function () {
+            var version = GameGlobals.changeLogHelper.getCurrentVersionNumber();
+            var entitiesObject = {};
+            var entityObject;
+            var nodes = 0;
+            for (var node = this.saveNodes.head; node; node = node.next) {
+                entityObject = this.getEntitySaveObject(node);
+                if (entityObject && Object.keys(entityObject).length > 0) {
+                    nodes++;
+                    entitiesObject[node.save.entityKey] = entityObject;
+                }
+            }
+
+            var save = {};
+            save.entitiesObject = entitiesObject;
+            save.gameState = GameGlobals.gameState;
+            save.timeStamp = new Date();
+            save.version = version;
+
+            var result = JSON.stringify(save);
+            // console.log("Total save size: " + result.length + ", " + nodes + " nodes");
+            return result;
+        },
+
+		getEntitySaveObject: function (node) {
 			var entityObject = {};
-			
+
 			var biggestComponent = null;
 			var biggestComponentSize = 0;
 			var totalSize = 0;
-			
+
 			for (var i = 0; i < node.save.components.length; i++) {
 				var componentType = node.save.components[i];
 				var component = node.entity.get(componentType);
@@ -78,8 +107,10 @@ define([
 					if (component.getCustomSaveObject) {
 						saveObject = component.getCustomSaveObject();
 					}
-					entityObject[componentKey] = saveObject;
-					
+                    if (saveObject) {
+                        entityObject[componentKey] = saveObject;
+                    }
+
 					var size = JSON.stringify(saveObject).length;
 					if (size > biggestComponentSize) {
 						biggestComponent = saveObject;
@@ -88,26 +119,35 @@ define([
 					totalSize += size;
 				}
 			}
-			
+
             //console.log(JSON.stringify(biggestComponent));
 			//console.log(biggestComponentSize + " / " + totalSize + " " + JSON.stringify(entityObject).length);
             //console.log(entityObject);
-			
+
 			return entityObject;
 		},
-		
-		restart: function () {
+
+        getSaveJSONfromCompressed: function (compressed) {
+            var json = LZString.decompressFromBase64(compressed);
+            return json;
+        },
+
+        getCompressedSaveJSON: function (json) {
+            var json = json || this.getSaveJSON();
+            console.log("basic json: " + json.length);
+            var compressed = LZString.compressToBase64(json);
+            console.log("compressed: " + compressed.length);
+            return compressed;
+        },
+
+        onRestart: function (resetSave) {
+            if (!resetSave) return;
 			if(typeof(Storage) !== "undefined") {
-				localStorage.removeItem("entitiesObject");
-				localStorage.removeItem("gameState");
-				localStorage.removeItem("timeStamp");
-				this.engine.getSystem(GameManager).restartGame();
-				console.log("Restarted.");
-			} else {
-			// Sorry! No Web Storage support..
+				localStorage.removeItem("save");
+                console.log("Removed save");
 			}
-		},
-	
+        }
+
     });
 
     return SaveSystem;

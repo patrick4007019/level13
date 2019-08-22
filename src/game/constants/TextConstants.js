@@ -1,8 +1,7 @@
 define(
 ['ash',
- 'game/constants/WorldCreatorConstants', 'game/constants/PositionConstants', 'game/constants/MovementConstants',
- 'game/constants/LocaleConstants', 'game/vos/LocaleVO'],
-function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, LocaleConstants, LocaleVO) {
+    'game/constants/GameConstants', 'game/constants/WorldCreatorConstants', 'game/constants/PositionConstants', 'game/constants/MovementConstants'],
+function (Ash, GameConstants, WorldCreatorConstants, PositionConstants, MovementConstants) {
 
     SECTOR_TYPE_NOLIGHT = -1;
     
@@ -45,6 +44,70 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 			return description;
 		},
 		
+        getPassageFoundMessage: function (passageVO, direction, sunlit) {
+            switch (passageVO.type) {
+                case MovementConstants.PASSAGE_TYPE_HOLE:
+                    if (direction === PositionConstants.DIRECTION_UP) {
+                        if (sunlit)
+                            return "Far above in the ceiling there is a hole. Blinding sunlight streams in from it.";
+                        else
+                            return "Far above in the ceiling there is a hole, a mouth leading into blackness.";
+                    } else {
+                        if (sunlit)
+                            return "There is a massive sinkhole here. A street is visible below, dizzyingly far away.";
+                        else
+                            return "There is a massive sinkhole here. Only vast emptiness is visible below.";
+                    }
+                default:
+                    return "There used to be " + TextConstants.addArticle(passageVO.name.toLowerCase()) + " here.";
+            }
+        },
+        
+        getPassageRepairedMessage: function (passageType, direction, sectorPosVO) {
+            var directionName = (direction === PositionConstants.DIRECTION_UP ? " up" : " down");
+            switch (passageType) {
+                case MovementConstants.PASSAGE_TYPE_HOLE:
+                    return "Elevator " + directionName + " built at " + sectorPosVO.getInGameFormat(true);
+                case MovementConstants.PASSAGE_TYPE_ELEVATOR:
+                    return "Elevator " + directionName + " repaired at " + sectorPosVO.getInGameFormat(true);
+                case MovementConstants.PASSAGE_TYPE_STAIRWELL:
+                    return "Stairwell " + directionName + " repaired at " + sectorPosVO.getInGameFormat(true);
+                default:
+                    console.log("WARN: Unknown passage type: [" + passageType + "]")
+                    return "Passage " + directionName + " ready at " + sectorPosVO.getInGameFormat(true);
+            }
+        },
+        
+        /*
+        There is a hole in the level ceiling here. An elevator has been built,
+        /**/
+        
+        getPassageDescription: function (passageVO, direction, isBuilt) {
+            var makeHighlight = function (content) { return "<span class='hl-functionality'>" + content + "</span>"; };
+            var directionName = (direction === PositionConstants.DIRECTION_UP ? " up" : " down");
+            switch (passageVO.type) {
+                case MovementConstants.PASSAGE_TYPE_HOLE:
+                    if (isBuilt) {
+                        return "A brand new " + makeHighlight("elevator " + directionName) + " has been built here.";
+                    } else {
+                        return "There is a " + makeHighlight("hole") + " in the level " + (direction === PositionConstants.DIRECTION_UP ? "ceiling" : "floor") + " here.";
+                    }
+                default:
+                    var name = passageVO.name.toLowerCase() + " " + directionName;
+                    var article = TextConstants.getArticle(name);
+                    var span = article + " " + makeHighlight(name);
+                    var state;
+                    if (isBuilt) {
+                        state = "and it has been repaired";
+                    } else if (passageVO.type === MovementConstants.PASSAGE_TYPE_ELEVATOR) {
+                        state = "but it is broken";
+                    } else {
+                        state = "but it needs to be repaired";
+                    }
+                    return "There is " + span + " here, " + state + ".";
+            }
+        },
+        
 		getLogResourceText: function (resourcesVO) {
 			var msg = "";
 			var replacements = [];
@@ -81,7 +144,37 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
                 var lastCommaIndex = msg.lastIndexOf(",");
                 msg = msg.substring(0, lastCommaIndex) + " and" + msg.substring(lastCommaIndex + 1);
             }
-            return {msg: msg, replacements: replacements, values: values};            
+            return {msg: msg, replacements: replacements, values: values};
+        },
+        
+        createTextFromLogMessage: function (msg, replacements, values, includePeriod) {
+            var text = msg;
+			var value = 0;
+			var useValues = values.length > 0;
+			for (var i = 0; i < replacements.length; i++) {
+				if (useValues) {
+					value = values[i];
+				}
+				if (value > 0 || value.length > 0 || !useValues) {
+					text = text.replace("$" + i, replacements[i]);
+				} else {
+					text = text.replace("$" + i, "");
+				}
+				
+				if (useValues) {
+					text = text.replace("#" + i, values[i]);
+				}
+			}
+			
+            text = text.trim();
+			text = text.replace(/ ,/g, "");
+			text = text.replace(/^,/g, "");
+			text = text.replace(/,$/g, "");
+			text = text.replace(/\, \./g, ".");
+			if (includePeriod && text.substr(text.length - 1) !== "." && text.substr(text.length - 1) !== "!")
+                text += ".";
+            text = text.trim();
+            return text;
         },
 		
 		getLocaleName: function (locale, sectorRepair, isShort) {
@@ -134,11 +227,11 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 				if (repairBracket === this.repairBrackets[1][0]) return "Decaying warehouse";
 				if (repairBracket === this.repairBrackets[2][0]) return "Abandoned warehouse";
 				return "Sturdy warehouse";
-			case localeTypes.camp: 
+			case localeTypes.camp:
             case localeTypes.tradingpartner:
                 return isShort ? "Camp" : "Foreign camp";
 			case localeTypes.hut:
-			case localeTypes.hermit: 
+			case localeTypes.hermit:
                 return isShort ? "Hut" : "Lone hut";
 			case localeTypes.caravan: return isShort ? "Caravan" : "Trade caravan";
 			default: return "Building";
@@ -175,41 +268,12 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 			}
 		},
 		
-		getEnemyText: function (enemyList, sectorControlComponent, defeatableBlockerNorth, defeatableBlockerSouth, defeatableBlockerWest, defeatableBlockerEast) {
+		getEnemyText: function (enemyList, sectorControlComponent) {
+			var result = "";
 			var enemyActiveV = this.getEnemyActiveVerb(enemyList);
-			var enemyDefeatedV = this.getEnemeyDefeatedVerb(enemyList);
-			
-			var sectorPart = "";
-			var sectorDefeated = sectorControlComponent.hasControl();
-			var enemyNounSector = this.getEnemyNoun(enemyList, !sectorDefeated);
-			
-			if (sectorDefeated) {
-				sectorPart += "All " + enemyNounSector + " here have been " + enemyDefeatedV + ". ";
-			} else {
-				sectorPart += "This area is " + enemyActiveV + " " + enemyNounSector + ". ";
-			}
-			
-			var gangPart = "";
-			if (defeatableBlockerNorth) {
-				var gangLeftDefeated = sectorControlComponent.hasControlOfLocale(LocaleConstants.getPassageLocaleId(PositionConstants.DIRECTION_NORTH));
-				if (!gangLeftDefeated) gangPart += "There is a gang of " + enemyNounSector + " blocking passage to the north. ";
-			}
-			if (defeatableBlockerSouth) {
-				var gangLeftDefeated = sectorControlComponent.hasControlOfLocale(LocaleConstants.getPassageLocaleId(PositionConstants.DIRECTION_SOUTH));
-				if (!gangLeftDefeated) gangPart += "There is a gang of " + enemyNounSector + " blocking passage to the south. ";
-			}
-			if (defeatableBlockerWest) {
-				var gangLeftDefeated = sectorControlComponent.hasControlOfLocale(LocaleConstants.getPassageLocaleId(PositionConstants.DIRECTION_WEST));
-				if (!gangLeftDefeated) gangPart += "There is a gang of " + enemyNounSector + " blocking passage to the west. ";
-			}
-			if (defeatableBlockerEast) {
-				var gangLeftDefeated = sectorControlComponent.hasControlOfLocale(LocaleConstants.getPassageLocaleId(PositionConstants.DIRECTION_EAST));
-				if (!gangLeftDefeated) gangPart += "There is a gang of " + enemyNounSector + " blocking passage to the east. ";
-			}
-			
-			var workshopPart = "";
-			
-			return sectorPart + workshopPart + gangPart;
+			var enemyNounSector = this.getEnemyNoun(enemyList, true);
+            result += enemyActiveV + " " + enemyNounSector;
+			return result;
 		},
 		
 		getEnemyNoun: function (enemyList, detailed) {
@@ -221,14 +285,37 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 				return parts[parts.length - 1];
 			}
 		},
+        
+        getEnemyGroupNoun: function (enemyList) {
+            return this.getCommonText(enemyList, "groupN", "", "group", false)
+        },
 		
 		getEnemyActiveVerb: function(enemyList) {
-			return this.getCommonText(enemyList, "activeV", "", "occupied by", false);    
+			return this.getCommonText(enemyList, "activeV", "", "occupied by", false);
 		},
 		
 		getEnemeyDefeatedVerb: function(enemyList) {
 			return this.getCommonText(enemyList, "defeatedV", "", "defeated", false);
 		},
+        
+        getMovementBlockerName: function(blockerVO, enemiesComponent) {
+			switch (blockerVO.type) {
+                case MovementConstants.BLOCKER_TYPE_GANG:
+                    var groupNoun = this.getEnemyGroupNoun(enemiesComponent.possibleEnemies);
+                    var enemyNoun = this.getEnemyNoun(enemiesComponent.possibleEnemies);
+                    return groupNoun + " of " + enemyNoun;
+                default:
+                    return blockerVO.name;
+            }
+        },
+        
+        getMovementBlockerAction: function (blockerVO, enemiesComponent) {
+			switch (blockerVO.type) {
+				case MovementConstants.BLOCKER_TYPE_GAP: return "Bridge gap";
+				case MovementConstants.BLOCKER_TYPE_WASTE: return "Clear waste";
+				case MovementConstants.BLOCKER_TYPE_GANG: return "Fight " + this.getEnemyNoun(enemiesComponent.possibleEnemies);
+	 	 	}
+        },
 		
 		getUnblockedVerb: function (blockerType) {
 			switch (blockerType) {
@@ -304,6 +391,9 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 				}
 			}
 			
+            // console.log("getCommonText " + objectAttribute + " | " + validDetail + " | " + validWords.join(",") + " | " + minimumWords.join(",") + " | " + defaultWord);
+            // console.log(objectList)
+            
 			if (validDetail.length > 0) {
 				return this.pluralify(validDetail);
 			} else if (validWords.length > 0) {
@@ -330,17 +420,21 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 		},
 		
 		addArticle: function (s) {
+            return this.getArticle(s) + " " + s;
+		},
+        
+        getArticle: function (s) {
             switch (s.trim().charAt(0).toLowerCase()) {
                 case "a":
                 case "i":
                 case "e":
                 case "o":
                 // u is often ambiguous use "a" until adding a fancier rule
-                    return "an " + s;
+                    return "an";
                 default:
-                    return "a " + s;
+                    return "a";
             }
-		},
+        },
 		
 		capitalize: function (string) {
 			return string.charAt(0).toUpperCase() + string.slice(1);
@@ -467,7 +561,7 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_COMMERCIAL][d4][r1] = "A dense corridor lined so closely with crumling ruins that there is barely enough space to walk.";
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_COMMERCIAL][d4][r2] = "A narrow corridor between two vast and decaying shopping towers with barely enough space to walk.";
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_COMMERCIAL][d4][r3] = "A narrow corridor between two massive shopping towers with barely enough space to walk.";
-		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_COMMERCIAL][d4][r4] = "A narrow but well-maintained corridor between two massive shopping towers with barely enough space to walk.";    
+		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_COMMERCIAL][d4][r4] = "A narrow but well-maintained corridor between two massive shopping towers with barely enough space to walk.";
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_SLUM] = {};
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_SLUM][d1] = {};
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_SLUM][d1][r1] = sectorDesc[WorldCreatorConstants.SECTOR_TYPE_RESIDENTIAL][d1][r1];
@@ -490,6 +584,7 @@ function (Ash, WorldCreatorConstants, PositionConstants, MovementConstants, Loca
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_SLUM][d4][r3] = "A filthy corridor packed so full of abandoned dark-dweller shacks that there is barely enough space to pass through.";
 		sectorDesc[WorldCreatorConstants.SECTOR_TYPE_SLUM][d4][r4] = "A recently inhabited slum so packed with shacks that there is barely enough space to pass through.";
     }
+    
     initSectorTexts();
     
     return TextConstants;

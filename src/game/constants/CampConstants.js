@@ -2,17 +2,30 @@ define(['ash'], function (Ash) {
     
     var CampConstants = {
     
+        // population
         POPULATION_PER_HOUSE: 4,
         POPULATION_PER_HOUSE2: 10,
-        POOL_RUMOURS_PER_POPULATION: 2,
-        POPULATION_COOLDOWN_SECONDS: 60,
-        BASE_STORAGE: 50,
+        POOL_RUMOURS_PER_POPULATION: 3,
         
-        RUMOURS_PER_POP_PER_SEC_BASE: 0.0001,
-        RUMOUR_BONUS_PER_CAMPFIRE_BASE: 1.1,
-        RUMOURS_BONUS_PER_CAMPFIRE_PER_UPGRADE: 1.02,
-        RUMOUR_BONUS_PER_INN_BASE: 1.03,
-        RUMOURS_BONUS_PER_INN_PER_UPGRADE: 1.02,
+        // Storage
+        BASE_STORAGE: 50,
+        STORAGE_PER_IMPROVEMENT: 50,
+        STORAGE_PER_IMPROVEMENT_LEVEL_2: 150,
+        STORAGE_PER_IMPROVEMENT_LEVEL_3: 450,
+        
+        // Rumours
+        RUMOURS_PER_POP_PER_SEC_BASE: 0.0003,
+        RUMOUR_BONUS_PER_CAMPFIRE_BASE: 1.2,
+        RUMOURS_BONUS_PER_CAMPFIRE_PER_LEVEL: 0.1,
+        RUMOURS_BONUS_PER_CAMPFIRE_PER_UPGRADE: 0.2,
+        RUMOUR_BONUS_PER_MARKET_BASE: 1.1,
+        RUMOURS_BONUS_PER_MARKET_PER_UPGRADE: 0.01,
+        RUMOUR_BONUS_PER_INN_BASE: 1.1,
+        RUMOURS_BONUS_PER_INN_PER_UPGRADE: 0.01,
+        RUMOURS_PER_VISIT_MARKET: 2,
+        
+        // Evidence
+        EVIDENCE_BONUS_PER_LIBRARY_LEVEL: 0.2,
         
         // Cost of workers
         CONSUMPTION_WATER_PER_WORKER_PER_S: 0.02,
@@ -30,10 +43,21 @@ define(['ash'], function (Ash) {
         PRODUCTION_MEDICINE_PER_WORKER_PER_S: 0.01,
         PRODUCTION_TOOLS_PER_WORKER_PER_S: 0.02,
         PRODUCTION_CONCRETE_PER_WORKER_PER_S: 0.03,
+        PRODUCTION_EVIDENCE_PER_WORKER_PER_S: 0.000375,
         
         // reputation
         REPUTATION_PER_RADIO_PER_SEC: 0.1,
         REPUTATION_PER_HOUSE_FROM_GENERATOR: 0.3,
+        REPUTATION_PENALTY_TYPE_FOOD: "FOOD",
+        REPUTATION_PENALTY_TYPE_WATER: "WATER",
+        REPUTATION_PENALTY_TYPE_DEFENCES: "DEFENCES",
+        REPUTATION_PENALTY_TYPE_HOUSING: "HOUSING",
+        REPUTATION_PENALTY_TYPE_LEVEL_POP: "LEVEL_POPULATION",
+        
+        // raids
+        CAMP_BASE_DEFENCE: 5,
+        FORTIFICATION_1_DEFENCE: 6,
+        FORTIFICATION_2_DEFENCE: 10,
         
         // Workers per building
         CHEMISTS_PER_WORKSHOP: 5,
@@ -47,7 +71,23 @@ define(['ash'], function (Ash) {
             apothecary: "apothecary",
             toolsmith: "toolsmith",
             concrete: "concrete",
+            scientist: "scientist",
             soldier: "soldier",
+        },
+        
+        // storage capacity of one camp
+        getStorageCapacity: function (storageCount, storageUpgradeLevel) {
+			var storagePerImprovement = CampConstants.STORAGE_PER_IMPROVEMENT;
+			if (storageUpgradeLevel > 1) storagePerImprovement = CampConstants.STORAGE_PER_IMPROVEMENT_LEVEL_2;
+			if (storageUpgradeLevel > 2) storagePerImprovement = CampConstants.STORAGE_PER_IMPROVEMENT_LEVEL_3;
+            return CampConstants.BASE_STORAGE + storageCount * storagePerImprovement;
+        },
+        
+        // population cap of one camp
+        getHousingCap: function (improvementsComponent) {
+            var result = improvementsComponent.getCount(improvementNames.house) * CampConstants.POPULATION_PER_HOUSE;
+            result += improvementsComponent.getCount(improvementNames.house2) * CampConstants.POPULATION_PER_HOUSE2;
+            return result;
         },
         
         getSmithsPerSmithy: function (upgradeLevel) {
@@ -59,17 +99,26 @@ define(['ash'], function (Ash) {
         },
         
         getWorkersPerMill: function (upgradeLevel) {
-            return 2 + (upgradeLevel - 1) * 2;            
+            return 2 + (upgradeLevel - 1) * 2;
         },
         
         getSoldiersPerBarracks: function (upgradeLevel) {
             return 5 + Math.floor((upgradeLevel - 1) * 2.5);
         },
         
-        getRequiredReputation: function (pop) {
-            var rawValue = pop/(pop+100)*100;
-            return Math.floor(rawValue * 100) / 100;
+        getScientistsPerLibrary: function (upgradeLevel) {
+            return 2;
         },
+        
+        getRequiredReputation: function (pop) {
+            if (pop < 1) return 0;
+            var rawValue = Math.max(0, pop)/(pop+100)*100;
+            return Math.max(1, Math.floor(rawValue * 100) / 100);
+        },
+        
+        getSoldierDefence: function (upgradeLevel) {
+            return (1 + upgradeLevel);
+        }
     
     };
     

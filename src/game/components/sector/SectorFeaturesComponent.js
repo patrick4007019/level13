@@ -1,6 +1,8 @@
 // A component that describes features of a sector, both functional (ability to build stuff)
 // and purely aesthetic (description)
-define(['ash', 'game/constants/WorldCreatorConstants'], function (Ash, WorldCreatorConstants) {
+define(
+    ['ash', 'game/constants/WorldCreatorConstants', 'game/vos/ResourcesVO'], 
+    function (Ash, WorldCreatorConstants, ResourcesVO) {
     
     var SectorFeaturesComponent = Ash.Class.extend({
         
@@ -19,7 +21,7 @@ define(['ash', 'game/constants/WorldCreatorConstants'], function (Ash, WorldCrea
         resourcesCollectable: null,
         
         constructor: function (level, buildingDensity, stateOfRepair, sectorType, buildingStyle, sunlit, hazards, weather,
-                               campable, notCampableReason, resourcesScavengable, resourcesCollectable, hasSpring) {
+                               campable, notCampableReason, resourcesScavengable, resourcesCollectable, hasSpring, stash) {
             this.level = level;
             this.buildingDensity = buildingDensity;
             this.stateOfRepair = stateOfRepair;
@@ -30,24 +32,16 @@ define(['ash', 'game/constants/WorldCreatorConstants'], function (Ash, WorldCrea
             this.weather = weather;
             this.campable = campable;
             this.notCampableReason = notCampableReason;
-            this.resourcesScavengable = resourcesScavengable;
-            this.resourcesCollectable = resourcesCollectable;
+            this.resourcesScavengable = resourcesScavengable || new ResourcesVO();
+            this.resourcesCollectable = resourcesCollectable || new ResourcesVO();
             this.hasSpring = hasSpring;
+            this.stash = stash || null;
         },
         
         // Secondary attributes
         
         canHaveCamp: function () {
-            var hasWater = (this.resourcesCollectable.water > 0 || this.resourcesScavengable.water > 0 || this.hasSpring);
-            var hasFood = (this.resourcesCollectable.food > 0 || this.resourcesScavengable.food > 0);
-            return  this.campable &&
-                    this.buildingDensity > 0 && this.buildingDensity < 9 &&
-                    hasWater && 
-                    hasFood && 
-                    this.resourcesScavengable.fuel <= 0 &&
-                    !this.hazards.hasHazards() &&
-                    this.stateOfRepair > 0;
-                    true;
+            return this.campable;
         },
         
         // Text functions
@@ -85,10 +79,15 @@ define(['ash', 'game/constants/WorldCreatorConstants'], function (Ash, WorldCrea
             else if (this.buildingDensity > 4)  genericNoun = "street";
             else if (this.buildingDensity > 0)  genericNoun = "square";
             else genericNoun = "sector";
+           
+            var wholeNoun = typeNoun + " " + genericNoun;
+            if (this.sectorType === WorldCreatorConstants.SECTOR_TYPE_COMMERCIAL && this.buildingDensity > 8) {
+                    wholeNoun = "back alley";
+            }
             
             if (hasLight) {
                 if (this.sectorType == WorldCreatorConstants.SECTOR_TYPE_SLUM) genericNoun = "";
-                return repairAdj + " " + typeNoun + " " + genericNoun;
+                return repairAdj + " " + wholeNoun;
             } else {
                 return "dark" + " " + repairAdj + " " + densityAdj + " " + genericNoun;
             }
@@ -100,25 +99,14 @@ define(['ash', 'game/constants/WorldCreatorConstants'], function (Ash, WorldCrea
                 var name = resourceNames[key];
                 var amount = this.resourcesScavengable.getResource(name);
                 if (amount > 0 && discoveredResources.indexOf(name) >= 0) {
-                    s += key + ", ";
+                    var amountDesc = "scarce";
+                    if (amount > 3) amountDesc = "common" 
+                    if (amount > 7) amountDesc = "abundant" 
+                    s += key + " (" + amountDesc + "), ";
                 }
             }
             if (s.length > 0) return s.substring(0, s.length - 2);
             else if (this.resourcesScavengable.getTotal() > 0) return "Unknown";
-            else return "None";
-        },
-        
-        getColResourcesString: function () {
-            var s = "";
-             for(var key in resourceNames) {
-                var name = resourceNames[key];
-                var amount = this.resourcesCollectable.getResource(name);
-                if (amount > 0) {
-                    s += key + ", ";
-                }
-            }
-            if (s.length > 0) return s.substring(0, s.length - 2);
-            else if (this.resourcesCollectable.getTotal() > 0) return "Unknown";
             else return "None";
         },
         

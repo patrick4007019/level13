@@ -1,14 +1,15 @@
 // Creates and updates maps (mini-map and main)
 define(['ash',
-    'game/constants/UIConstants',
+    'game/GameGlobals',
     'game/constants/CanvasConstants',
+    'game/constants/ColorConstants',
     'game/constants/PlayerActionConstants',
     'game/constants/UpgradeConstants',
     'game/nodes/tribe/TribeUpgradesNode'],
-function (Ash,
-    UIConstants, CanvasConstants, PlayerActionConstants, UpgradeConstants, TribeUpgradesNode) {
+function (Ash, GameGlobals, CanvasConstants, ColorConstants, PlayerActionConstants, UpgradeConstants, TribeUpgradesNode) {
     
-    var TechTreeNode = Ash.Class.extend({
+    var UITechTreeNode = Ash.Class.extend({
+        
         definition: null,
         level: 0,
         requiresIDs: [],
@@ -27,11 +28,13 @@ function (Ash,
     });
     
     var TechTree = Ash.Class.extend({
+        
         roots: [],
         nodesById: {},
         
         constructor: function () {
             this.roots = [];
+            this.grid = [];
             this.nodesById = {};
             this.maxX = -1;
             this.maxY = -1;
@@ -48,10 +51,10 @@ function (Ash,
             for (i; i <= this.roots.length; i++) {
                 if (i === this.roots.length)
                     break;
-                if (this.roots[i].level >= node.level)
+                if (this.roots[i].campOrdinal >= node.campOrdinal)
                     break;
             }
-            this.roots.splice(i, 0, node);            
+            this.roots.splice(i, 0, node);
         },
         
         connectNodes: function () {
@@ -76,23 +79,35 @@ function (Ash,
             }
         },
         
-        pruneNodes: function (tribeNodes, playerActionsHelper) {
+        pruneNodes: function (tribeNodes) {
             var node;
             for (var id in this.nodesById) {
                 node = this.nodesById[id];
+                
+                // unlocked
                 if (tribeNodes.head.upgrades.hasUpgrade(node.definition.id))
                     continue;
                 
-                var isAvailable = playerActionsHelper.checkRequirements(node.definition.id, false).value > 0;
+                // available
+                var isAvailable = GameGlobals.playerActionsHelper.checkRequirements(node.definition.id, false).value > 0;
                 if (isAvailable)
                     continue;
-                
-                for (var i = 0; i < node.requires.length; i++) {
-                    isAvailable = isAvailable || playerActionsHelper.checkRequirements(node.requires[i].definition.id, false).value > 0;
+                    
+                // visible (requirements available)
+                var isVisible = false;
+                var reqs = GameGlobals.playerActionsHelper.getReqs(node.definition.id);
+                var isMissingBlueprint = reqs && reqs.blueprint && !tribeNodes.head.upgrades.hasAvailableBlueprint(node.definition.id);
+                if (!isMissingBlueprint) {
+                    for (var i = 0; i < node.requires.length; i++) {
+                        isVisible = isVisible || GameGlobals.playerActionsHelper.checkRequirements(node.requires[i].definition.id, false).value > 0;
+                    }
+                } else {
+                    isVisible = tribeNodes.head.upgrades.hasNewBlueprint(node.definition.id);
                 }
-                if (isAvailable)
+                if (isVisible)
                     continue;
-                
+                    
+                // none of the above - prune
                 this.removeNode(this.nodesById[id]);
             }
         },
@@ -132,119 +147,227 @@ function (Ash,
         ctx: null,
         
         cellW: 85,
-        cellH: 20,
+        cellH: 22,
         cellPX: 20,
-        cellPY: 10,
+        cellPY: 15,
         treePX: 20,
-        treePY: 40,
+        treePY: 20,
         
-        constructor: function (engine, playerActionsHelper) {            
+        minGridStep: 0.25,
+        
+        constructor: function (engine) {
 			this.tribeNodes = engine.getNodeList(TribeUpgradesNode);
-            this.playerActionsHelper = playerActionsHelper;
         },
         
-        enableScrolling: function (canvasId) {
-            CanvasConstants.makeCanvasScrollable(canvasId);
-            CanvasConstants.updateScrollEnable(canvasId);
+        init: function (canvasId, overlayId, selectioncb) {
+            var vis = { $canvas: $("#" + canvasId), canvasId: canvasId, $overlay: $("#" + overlayId), overlayId: overlayId, selectioncb: selectioncb };
+            vis.selectedID = null;
+            return vis;
         },
         
-        drawTechTree: function (canvasId) {
-            this.canvas = $("#" + canvasId)[0];
+        enableScrolling: function (vis) {
+            CanvasConstants.makeCanvasScrollable(vis.canvasId);
+            CanvasConstants.updateScrollEnable(vis.canvasId);
+        },
+        
+        drawTechTree: function (vis) {
+            var tree = this.makeTechTree();
+            var y = 0;
+            for (var i = 0; i < tree.roots.length; i++) {
+                y = y + this.positionRoot(tree, tree.roots[i], y);
+            }
+            vis.tree = tree;
+            vis.dimensions = this.getTreeDimensions(vis, tree.maxX, tree.maxY);
+            vis.sunlit = $("body").hasClass("sunlit");
+            
+            // TODO extend to several required tech per tech; currently drawing assumes max 1
+            
+            this.refreshCanvas(vis);
+            this.rebuildOverlay(vis);
+            CanvasConstants.updateScrollEnable(vis.canvasId);
+            CanvasConstants.updateScrollIndicators(vis.canvasId);
+        },
+        
+        refreshCanvas: function (vis) {
+            this.canvas = vis.$canvas[0];
             this.ctx = this.canvas ? this.canvas.getContext && this.canvas.getContext('2d') : null;
             
             if (!this.ctx)
                 return;
             
-            var tree = this.makeTechTree();
-            var sunlit = $("body").hasClass("sunlit");
-            
-            // TODO extend to several required tech per tech; currently drawing assumes max 1
-            
-            var y = 0;
-			for (var i = 0; i < tree.roots.length; i++) {
-                y = y + this.positionRoot(tree, tree.roots[i], y);
-            }
-            
-            var dimensions = this.getTreeDimensions(canvasId, tree.maxX, tree.maxY);
-            this.ctx.canvas.width = dimensions.canvasWidth;
-            this.ctx.canvas.height = dimensions.canvasHeight;            
+            this.ctx.canvas.width = vis.dimensions.canvasWidth;
+            this.ctx.canvas.height = vis.dimensions.canvasHeight;
             this.ctx.clearRect(0, 0, this.canvas.scrollWidth, this.canvas.scrollWidth);
-            this.ctx.fillStyle = CanvasConstants.getBackgroundColor(sunlit);
-            this.ctx.fillRect(0, 0, this.canvas.scrollWidth, this.canvas.scrollWidth);
+            this.ctx.fillStyle = ColorConstants.getColor(vis.sunlit, "bg_page");
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-			for (var i = 0; i < tree.roots.length; i++) {
-                this.drawRoot(tree.roots[i], sunlit);
+			for (var i = 0; i < vis.tree.roots.length; i++) {
+                this.drawRoot(vis, vis.tree.roots[i], vis.sunlit);
             }
+        },
+        
+        rebuildOverlay: function (vis) {
+            var $overlay = vis.$overlay;
+            $overlay.empty();
+            $overlay.css("width", vis.dimensions.canvasWidth + "px");
+            $overlay.css("height", vis.dimensions.canvasHeight + "px");
+            
+			for (var i = 0; i < vis.tree.roots.length; i++) {
+                var root = vis.tree.roots[i];
+                this.addOverlayNodes(vis, $overlay, root);
+            }
+        },
+        
+        addOverlayNodes: function (vis, $overlay, root) {
+            this.addOverlayNode(vis, $overlay, root);
+            for (var level in root.requiredByByLevel) {
+                for (var j = 0; j < root.requiredByByLevel[level].length; j++) {
+                    this.addOverlayNodes(vis, $overlay, root.requiredByByLevel[level][j]);
+                }
+            }
+        },
+        
+        addOverlayNode: function (vis, $overlay, node) {
+            var xpx = this.getPixelPosX(node.x);
+            var ypx = this.getPixelPosY(node.y);
+            var data = "data-id='" + node.definition.id + "'";
+            var text = node.definition.name;
+            var $div = $("<div class='canvas-overlay-cell upgrades-overlay-cell' style='top: " + ypx + "px; left: " + xpx + "px' " + data +"><p>" + text +"</p></div>");
+            var helper = this;
+            $div.click(function (e) {
+                console.log("tech selected: " + node.definition.id);
+                vis.selectedID = node.definition.id;
+                vis.selectioncb();
+            });
+            $div.hover(function () {
+                vis.highlightedID = node.definition.id;
+                helper.refreshCanvas(vis);
+            }, function () {
+                vis.highlightedID = null;
+                helper.refreshCanvas(vis);
+            });
+            $overlay.append($div);
+        },
+        
+        isOccupied: function (tree, x, y) {
+            var grids = 1/this.minGridStep;
+            var gridX = Math.round(x*grids) / grids;
+            var gridY = Math.round(y*grids) / grids;
+            if (gridX < 0 || gridY < 0) return true;
+            if (!tree.grid[gridY]) return false;
+            return tree.grid[gridY][gridX];
+        },
+        
+        isOccupiedArea: function (tree, x, y, px, py) {
+            if (this.isOccupied(tree, x, y)) return true;
+            for (var tx = Math.max(0, x - px); tx <= x + px; tx += this.minGridStep) {
+                for (var ty = Math.max(0, y - py); ty <= y + py; ty += this.minGridStep) {
+                    if (this.isOccupied(tree, tx, ty)) return true;
+                }
+            }
+            return false;
+        },
+        
+        positionNode: function (tree, node, x, y) {
+            node.x = x;
+            node.y = y;
+            if (node.x > tree.maxX) tree.maxX = node.x;
+            if (node.y > tree.maxY) tree.maxY = node.y;
+            
+            var grids = 1/this.minGridStep;
+            var gridX = Math.round(x*grids) / grids;
+            var gridY = Math.round(y*grids) / grids;
+            if (!tree.grid[gridY]) tree.grid[gridY] = {};
+            if (this.isOccupiedArea(tree, gridX, gridY, 0.5, 0.5)) console.log("WARN: Overlapping position: " + gridX + "-" + gridY + " " + node.definition.name);
+            tree.grid[gridY][gridX] = node;
+        },
+        
+        positionChildren: function (tree, parent, yHeight, x, y) {
+            var child;
+            var l = 0;
+            var childYHeight = 0.825;
+            var numChildren = parent.requiredBy.length;
+            if (numChildren > yHeight) yHeight = numChildren * childYHeight;
+            
+            var maxYoffset = 0;
+            if (numChildren == 2) maxYoffset = childYHeight / 2;
+            if (numChildren > 2) maxYoffset = childYHeight;
+            
+            for (var i = 0; i < parent.requiredBy.length; i++) {
+                child = parent.requiredBy[i];
+                var ydiff = i * childYHeight;
+                var childX = Math.max(x + 1, child.level);
+                var childY = y + ydiff;
+                if (maxYoffset > 0) {
+                    var yOffset = 0;
+                    var isOccupied = this.isOccupiedArea(tree, childX, childY - maxYoffset, 0.5, 0.5);
+                    if (!isOccupied) {
+                        yOffset = -maxYoffset;
+                        childY += yOffset;
+                    } else {
+                        maxYoffset = 0;
+                    }
+                }
+                
+                var j = 0;
+                while (this.isOccupiedArea(tree, childX, childY, 0.25, childYHeight/2)) {
+                    if (childY < 0) { console.log("break push due to 0"); break; }
+                    if (j > 100) { console.log("break push due to j"); break; }
+                    childY += childYHeight / 2;
+                    j++;
+                }
+                this.positionNode(tree, child, childX, childY);
+                var childHeight = this.positionChildren(tree, child, yHeight, child.x, child.y);
+                yHeight = Math.max(yHeight, childHeight);
+            }
+            return Math.max(1, yHeight);
         },
         
         positionRoot: function (tree, root, y) {
             var x = Math.max(0, root.level - 1);
             var yHeight = 1;
-            root.x = x;
-            root.y = y;
-            
-            if (root.x > tree.maxX) tree.maxX = root.x;
-            if (root.y > tree.maxY) tree.maxY = root.y;
-            
-            var child;
-            var previousLevel = root.level;
-            var l = 0;
-            for (var level in root.requiredByByLevel) {
-                var numperlevel = root.requiredByByLevel[level].length;
-                if (numperlevel > yHeight) yHeight = numperlevel;
-                for (var i = 0; i < root.requiredByByLevel[level].length; i++) {
-                    var ydiff = 0;
-                    if (numperlevel === 2) ydiff = -0.5 + i;
-                    else if (numperlevel === 3) ydiff = -1 + i;
-                    else if (numperlevel > 3) console.log("WARN: numperlevel > 3 - vis will not work!");
-                    child = root.requiredByByLevel[level][i];
-                    child.x = x + 1 + l;
-                    child.y = y + ydiff;
-            
-                    if (child.x > tree.maxX) tree.maxX = child.x;
-                    if (child.y > tree.maxY) tree.maxY = child.y;
-                }
-                l++;
-                if (level - previousLevel > 1)
-                    l++;
-                previousLevel = level;
-            }
-            
-            return yHeight;            
+            this.positionNode(tree, root, x, y);
+            yHeight = this.positionChildren(tree, root, yHeight, x, y);
+            return yHeight;
         },
         
-        drawRoot: function (root, sunlit) {
-            this.drawNode(root);            
+        drawRoot: function (vis, root, sunlit) {
+            this.drawNode(vis, root, sunlit);
             for (var level in root.requiredByByLevel) {
                 for (var i = 0; i < root.requiredByByLevel[level].length; i++) {
-                    this.drawNode(root.requiredByByLevel[level][i], sunlit);
+                    this.drawRoot(vis, root.requiredByByLevel[level][i], sunlit);
                 }
             }
         },
         
-        drawNode: function (node, sunlit) {
+        drawNode: function (vis, node, sunlit) {
             var pixelX = this.getPixelPosX(node.x);
             var pixelY = this.getPixelPosY(node.y);
             
             // arrows
             for (var i = 0; i < node.requiredBy.length; i++) {
+                var targetGridX = node.requiredBy[i].x;
+                var targetGridY = node.requiredBy[i].y;
+                var arrowstartxOffset = -Math.abs(node.y - targetGridY) * this.cellW / 16;
                 this.drawArrow(
-                    pixelX + this.cellW, 
-                    pixelY + this.cellH / 2, 
-                    this.getPixelPosX(node.requiredBy[i].x) - this.cellPX / 5, 
-                    this.getPixelPosY(node.requiredBy[i].y) + this.cellH / 2
+                    pixelX + this.cellW + arrowstartxOffset,
+                    pixelY + this.cellH / 2,
+                    this.getPixelPosX(targetGridX) - this.cellPX / 5,
+                    this.getPixelPosY(targetGridY) + this.cellH / 2,
+                    this.getArrowColor(vis.tree, node, node.requiredBy[i], sunlit, vis.highlightedID)
                 );
             }
             
             // node
-            this.ctx.fillStyle = this.getFillColor(node, sunlit);
+            this.ctx.fillStyle = this.getFillColor(vis.tree, node, sunlit, vis.highlightedID);
             this.ctx.fillRect(pixelX, pixelY, this.cellW, this.cellH);
             
+            // available border
             var hasUpgrade =  this.tribeNodes.head.upgrades.hasUpgrade(node.definition.id);
-            var isAvailable = this.playerActionsHelper.checkRequirements(node.definition.id, false).value > 0;
-            if (hasUpgrade || isAvailable) {
+            var isAvailable = GameGlobals.playerActionsHelper.checkRequirements(node.definition.id, false).value > 0;
+            if (!hasUpgrade && isAvailable) {
                 this.ctx.lineWidth = 3;
-                this.ctx.strokeStyle = hasUpgrade ? "#666" : "#fdfdfd";
+                this.ctx.strokeStyle = this.getBorderColor(vis.tree, node, sunlit, vis.highlightedID);
                 this.ctx.beginPath();
                 this.ctx.moveTo(pixelX, pixelY);
                 this.ctx.lineTo(pixelX + this.cellW, pixelY);
@@ -254,17 +377,6 @@ function (Ash,
                 this.ctx.stroke();
                 this.ctx.closePath();
             }
-
-            // details
-            var lacksBlueprint = 
-                this.playerActionsHelper.checkRequirements(node.definition.id, false).value <= 0 &&
-                this.playerActionsHelper.getReqs(node.definition.id).blueprint && 
-                !this.tribeNodes.head.upgrades.hasAvailableBlueprint(this.playerActionsHelper.getReqs(node.definition.id).blueprint);
-            this.ctx.font = "11px Arial";
-            this.ctx.fillStyle = sunlit ? "#fdfdfd" : "#202220";
-            this.ctx.textAlign = "center";
-            var text = lacksBlueprint ? "???" : node.definition.name;
-            this.ctx.fillText(text, pixelX + this.cellW / 2, pixelY + this.cellH / 3 * 2);
         },
         
         getPixelPosX: function (x) {
@@ -275,21 +387,35 @@ function (Ash,
             return this.treePY + y * this.cellH + y * this.cellPY;
         },
         
-        drawArrow: function (fromx, fromy, tox, toy) {
+        drawArrow: function (fromx, fromy, tox, toy, color) {
             if (fromx < 0 || fromy < 0 || tox < 0 || toy < 0)
                 return;
-            
-            var headlen = 7;
+                
             var angle = Math.atan2(toy-fromy,tox-fromx);
-            this.ctx.strokeStyle = "#444";
             
+            // arrow line
+            this.ctx.strokeStyle = color;
+            this.ctx.lineWidth = 2;
             this.ctx.beginPath();
             this.ctx.moveTo(fromx, fromy);
-            this.ctx.lineTo(tox, toy);
+            var pointsAligned = fromy == toy || fromx == tox;
+            var pointsClose = Math.abs(fromy - toy) < this.cellH && Math.abs(fromx - tox) < this.cellW;
+            if (pointsAligned || pointsClose) {
+                this.ctx.lineTo(tox, toy);
+            } else {
+                var quadx = this.getCurveControlX(fromx, fromy, tox, toy);
+                var quady = this.getCurveControlY(fromx, fromy, tox, toy);
+                this.ctx.quadraticCurveTo(quadx, quady, tox, toy);
+                // uncomment to see control points
+                //this.ctx.fillRect(quadx,quady,4,4);
+                angle = Math.abs(fromx - tox) > Math.abs(fromy - toy) ? 0 : angle / 2;
+            }
             this.ctx.stroke();
             
-            this.ctx.fillStyle = "#444";
-            this.ctx.lineWidth = 1;
+            // arrowhead
+            var headlen = 8;
+            this.ctx.fillStyle = color;
+            this.ctx.lineWidth = 2;
             this.ctx.beginPath();
             this.ctx.moveTo(tox, toy);
             this.ctx.lineTo(tox-headlen*Math.cos(angle-Math.PI/6),toy-headlen*Math.sin(angle-Math.PI/6));
@@ -308,47 +434,127 @@ function (Ash,
             ids.sort(function (a, b) {
 				var levela = UpgradeConstants.getMinimumCampOrdinalForUpgrade(a);
 				var levelb = UpgradeConstants.getMinimumCampOrdinalForUpgrade(b);
-				return levela - levelb; 
+				return levela - levelb;
             });
 			for (var i = 0; i < ids.length; i++) {
                 definition = UpgradeConstants.upgradeDefinitions[ids[i]];
                 var reqs = PlayerActionConstants.requirements[definition.id];
-                node = new TechTreeNode();
+                node = new UITechTreeNode();
                 node.definition = definition;
-                node.level = UpgradeConstants.getMinimumCampOrdinalForUpgrade(definition.id);
+                node.campOrdinal = UpgradeConstants.getMinimumCampOrdinalForUpgrade(definition.id);
+                node.level = Math.floor(node.campOrdinal / 3);
                 node.requiresIDs = reqs && reqs.upgrades ? Object.keys(reqs.upgrades) : [];
                 tree.addNode(node);
             }
             tree.connectNodes();
-            tree.pruneNodes(this.tribeNodes, this.playerActionsHelper);
+            tree.pruneNodes(this.tribeNodes, GameGlobals.playerActionsHelper);
             return tree;
         },
         
-        getTreeDimensions: function (canvasId, maxX, maxY) {            
-            var dimensions = {};            
-            var canvas = $("#" + canvasId);
-            
-            dimensions.treeWidth = maxX * this.cellW + (maxX - 1) * this.cellPX + 2 * this.treePX;
-            dimensions.treeHeight = maxY * this.cellH + (maxY - 1) * this.cellPY + 2 * this.treePY;
+        getTreeDimensions: function (vis, maxX, maxY) {
+            var dimensions = {};
+            var canvas = vis.$canvas[0];
+            dimensions.treeWidth = (maxX + 1) * this.cellW + maxX * this.cellPX + 2 * this.treePX;
+            dimensions.treeHeight = (maxY + 1) * this.cellH + maxY * this.cellPY + 2 * this.treePY;
             dimensions.canvasWidth = Math.max(dimensions.treeWidth, $(canvas).parent().width());
             dimensions.canvasHeight = Math.max(dimensions.treeHeight, 100);
             return dimensions;
         },
         
-        getFillColor: function (node, sunlit) {
+        isConnected: function (tree, id1, id2) {
+            if (id1 == id2) return true;
+            return this.isDescendantOf(tree, id1, id2) || this.isAncestorOf(tree, id1, id2);
+        },
+        
+        isAncestorOf: function (tree, id1, id2) {
+            if (id1 == id2) return true;
+            var node1 = tree.nodesById[id1];
+            for (var i = 0; i < node1.requiredBy.length; i++) {
+                var node3 = node1.requiredBy[i];
+                if (this.isAncestorOf(tree, node3.definition.id, id2)) return true;
+            }
+            return false;
+        },
+        
+        isDescendantOf: function (tree, id1, id2) {
+            if (id1 == id2) return true;
+            var node1 = tree.nodesById[id1];
+            for (var i = 0; i < node1.requires.length; i++) {
+                var node3 = node1.requires[i];
+                if (this.isDescendantOf(tree, node3.definition.id, id2)) return true;
+            }
+            return false;
+        },
+        
+        getCurveControlX: function (fromx, fromy, tox, toy) {
+            // steeper curve (x control closer to fromx) when target is further away
+            var result = fromx + this.cellW / 4 * 3 - (tox - fromx);
+            result = Math.max(result, fromx );
+            result = Math.min(result, (fromx + tox) / 2);
+            return result;
+        },
+        
+        getCurveControlY: function (fromx, fromy, tox, toy) {
+            if (fromy == toy) return fromy;
+            
+            var xdist = Math.abs(fromx - tox);
+            if (xdist > this.cellW + this.cellPX * 2) {
+                // long distance, add some extra curviness to avoid overlaps
+                if (fromy < toy) {
+                    return toy + this.cellPY;
+                } else {
+                    return toy - this.cellPY;
+                }
+            } else {
+                // short (max 1 level) distance, basic curve
+                return toy;
+            }
+        },
+        
+        getArrowColor: function (tree, fromNode, toNode, sunlit, highlightedID) {
+            var def1 = fromNode.definition;
+            var def2 = toNode.definition;
+            var highlight = this.isConnected(tree, fromNode.definition.id, highlightedID) && this.isConnected(tree, toNode.definition.id, highlightedID);
+            if (!highlightedID || highlight) {
+                return ColorConstants.getColor(sunlit, "techtree_arrow");
+            } else {
+                return ColorConstants.getColor(sunlit, "techtree_arrow_dimmed");
+            }
+        },
+        
+        getFillColor: function (tree, node, sunlit, highlightedID) {
             var definition = node.definition;
-            if (this.tribeNodes.head.upgrades.hasUpgrade(definition.id)) {
-                return sunlit ? "#3a3a3a" : "#aaa";
+            var isUnlocked = this.tribeNodes.head.upgrades.hasUpgrade(definition.id);
+            var highlight = definition.id == highlightedID || this.isConnected(tree, definition.id, highlightedID);
+            if (!highlightedID || highlight) {
+                if (isUnlocked) {
+                    return ColorConstants.getColor(sunlit, "techtree_node_unlocked");
+                }
+                var isAvailable = GameGlobals.playerActionsHelper.checkRequirements(definition.id, false).value > 0;
+                if (isAvailable) {
+                    return ColorConstants.getColor(sunlit, "techtree_node_available");
+                }
+                return ColorConstants.getColor(sunlit, "techtree_node_default");
+            } else {
+                return ColorConstants.getColor(sunlit, "techtree_node_dimmed");
+                
             }
-            var isAvailable = this.playerActionsHelper.checkRequirements(definition.id, false).value > 0;
-            if (isAvailable) {
-                return sunlit ? "#444" : "#ccc";
+        },
+        
+        getBorderColor: function (tree, node, sunlit, highlightedID) {
+            var definition = node.definition;
+            var isUnlocked = this.tribeNodes.head.upgrades.hasUpgrade(definition.id);
+            var isAvailable = GameGlobals.playerActionsHelper.checkRequirements(node.definition.id, false).value > 0;
+            if (!isUnlocked && isAvailable) {
+                var highlight = definition.id == highlightedID || this.isConnected(tree, definition.id, highlightedID);
+                if (!highlightedID || highlight) {
+                    return ColorConstants.getColor(sunlit, "techtree_node_unlocked");
+                } else {
+                    return ColorConstants.getColor(sunlit, "techtree_node_default");
+                }
+            } else {
+                return this.getFillColor(tree, node, sunlit, highlightedID);
             }
-            var isNext = true;
-            if (isNext) {
-                return sunlit ? "#cdcdcd" : "#444";
-            }
-            return null;
         }
         
     });

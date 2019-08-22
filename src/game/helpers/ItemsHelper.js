@@ -10,12 +10,8 @@ define([
     PlayerActionConstants
 ) {
     var ItemsHelper = Ash.Class.extend({
-        
-        gameState: null,
 
-        constructor: function (gameState) {
-            this.gameState = gameState;
-        },
+        constructor: function () { },
         
         defaultClothing: {
         },
@@ -23,19 +19,19 @@ define([
         availableClothing: {            
         },
         
-        getDefaultClothing: function (levelOrdinal, totalLevels) {
-            return this.getAvailableClothingList(levelOrdinal, totalLevels, false, false);
+        getBestClothing: function (campOrdinal, itemBonusType) {
+            return this.getAvailableClothingList(campOrdinal, true, true, false, itemBonusType);
         },
         
-        getScavengeRewardClothing: function (levelOrdinal, totalLevels) {
-            var possibleItems = this.getAvailableClothingList(levelOrdinal, totalLevels, true, true);
-            return possibleItems[Math.floor(Math.random() * possibleItems.length)];
+        getScavengeRewardClothing: function (campOrdinal) {
+            return this.getAvailableClothingList(campOrdinal, true, true, true);
         },
         
-        getAvailableClothingList: function (levelOrdinal, totalLevels, includeNonCraftable, includeMultiplePerType) {
-            if (!includeNonCraftable && !includeMultiplePerType && this.defaultClothing[levelOrdinal]) return this.defaultClothing[levelOrdinal];
-            if (includeNonCraftable && includeMultiplePerType && this.availableClothing[levelOrdinal]) return this.availableClothing[levelOrdinal];
-            
+        getScavengeNecessityClothing: function (campOrdinal) {
+            return this.getAvailableClothingList(campOrdinal, false, true, false);
+        },
+        
+        getAvailableClothingList: function (campOrdinal, includeCraftable, includeNonCraftable, includeMultiplePerType, preferredItemBonus) {
             var result = [];
             var clothingLists = [
                 ItemConstants.itemDefinitions.clothing_over,
@@ -44,29 +40,34 @@ define([
                 ItemConstants.itemDefinitions.clothing_hands,
                 ItemConstants.itemDefinitions.clothing_head
             ];
+            
             var bestAvailableItem;
+            var bestAvailableItemBonus;
             var clothingList;
             var clothingItem;
             var isAvailable;
             for (var i = 0; i < clothingLists.length; i++) {
                 bestAvailableItem = null;
+                bestAvailableItemBonus = 0;
                 clothingList = clothingLists[i];
                 for (var j = 0; j < clothingList.length; j++) {
                     clothingItem = clothingList[j];
                     isAvailable = false;
                     
                     // only craftable items are considered default (no reliable source especially when possible to lose once acquired)
-                    if (clothingItem.craftable) {
-                        isAvailable = ItemConstants.getRequiredLevelToCraft(clothingItem, this.gameState) <= levelOrdinal;
+                    if (clothingItem.craftable && includeCraftable) {
+                        isAvailable = ItemConstants.getRequiredCampOrdinalToCraft(clothingItem) <= campOrdinal;
                     }
 
                     // non-craftable items added for scavenging results
                     if (!clothingItem.craftable && includeNonCraftable) {
-                        isAvailable = clothingItem.requiredLevel >= 0 && clothingItem.requiredLevel <= levelOrdinal;
+                        isAvailable = clothingItem.requiredCampOrdinal >= 0 && clothingItem.requiredCampOrdinal <= campOrdinal;
                     }
 
-                    if (isAvailable && (!bestAvailableItem || bestAvailableItem.getTotalBonus() < clothingItem.getTotalBonus())) {
+                    var bonus = preferredItemBonus ? clothingItem.getBonus(preferredItemBonus) : clothingItem.getTotalBonus();
+                    if (isAvailable && bonus > 0 && (!bestAvailableItem || bestAvailableItemBonus < bonus)) {
                         bestAvailableItem = clothingItem;
+                        bestAvailableItemBonus = bonus;
                     }
                     
                     if (isAvailable && includeMultiplePerType) {
@@ -81,17 +82,33 @@ define([
                     result.push(bestAvailableItem);
                 }
             }
-
-            if (!includeNonCraftable && !includeMultiplePerType)
-                this.defaultClothing[levelOrdinal] = result;
-            else if (includeNonCraftable && includeMultiplePerType)
-                this.availableClothing[levelOrdinal] = result;
             
             return result;
         },
         
-        getMaxHazardRadiationForLevel: function (levelOrdinal) {
-            var defaultClothing = this.getDefaultClothing(levelOrdinal);
+        getNewEquipment: function (campOrdinal) {
+            var result = [];
+            var prevNecessityClothing = this.getScavengeNecessityClothing(campOrdinal - 1);
+            var necessityClothing = this.getScavengeNecessityClothing(campOrdinal);
+            for (var i = 0; i < necessityClothing.length; i++) {
+                var notNew = false;
+                for (var j = 0; j < prevNecessityClothing.length; j++) {
+                    if (necessityClothing[i].id === prevNecessityClothing[j].id) {
+                        notNew = true;
+                    }
+                }
+                if (notNew) continue;
+                result.push(necessityClothing[i]);
+            }
+            var prevWeapon = ItemConstants.getDefaultWeapon(campOrdinal - 1);
+            var weapon = ItemConstants.getDefaultWeapon(campOrdinal);
+            if (weapon && (!prevWeapon || weapon.id !== prevWeapon.id)) result.push(weapon);
+            return result;
+        },
+        
+        // max radiation level at the END of the given camp ordinal (all tech and items etc)
+        getMaxHazardRadiationForLevel: function (campOrdinal) {
+            var defaultClothing = this.getBestClothing(campOrdinal, ItemConstants.itemBonusTypes.res_radiation);
             var radiationProtection = 0;
             for (var i = 0; i < defaultClothing.length; i++) {
                 radiationProtection += defaultClothing[i].getBonus(ItemConstants.itemBonusTypes.res_radiation);
@@ -99,8 +116,9 @@ define([
             return radiationProtection;
         },
         
-        getMaxHazardPoisonForLevel: function (levelOrdinal) {
-            var defaultClothing = this.getDefaultClothing(levelOrdinal);
+         // max radiation level at the END of the given camp ordinal (all tech and items etc)
+        getMaxHazardPoisonForLevel: function (campOrdinal) {
+            var defaultClothing = this.getBestClothing(campOrdinal, ItemConstants.itemBonusTypes.res_poison);
             var poisonProtection = 0;
             for (var i = 0; i < defaultClothing.length; i++) {
                 poisonProtection += defaultClothing[i].getBonus(ItemConstants.itemBonusTypes.res_poison);
@@ -108,13 +126,14 @@ define([
             return poisonProtection;        
         },
         
-        getMaxHazardColdForLevel: function (levelOrdinal) {
-            var defaultClothing = this.getDefaultClothing(levelOrdinal);
+         // max radiation level at the END of the given camp ordinal (all tech and items etc)
+        getMaxHazardColdForLevel: function (campOrdinal) {
+            var defaultClothing = this.getBestClothing(campOrdinal, ItemConstants.itemBonusTypes.res_cold);
             var coldProtection = 0;
             for (var i = 0; i < defaultClothing.length; i++) {
                 coldProtection += defaultClothing[i].getBonus(ItemConstants.itemBonusTypes.res_cold);
             }
-            return (coldProtection - 5);
+            return coldProtection;
         },
         
     });

@@ -1,6 +1,7 @@
 // A system that updates a Sector's MovementOptionsComponent based on its neighbours and improvements
 define([
     'ash',
+    'game/GameGlobals',
     'game/GlobalSignals',
     'game/constants/PositionConstants',
     'game/constants/LocaleConstants',
@@ -13,12 +14,12 @@ define([
     'game/components/common/VisitedComponent',
     'game/components/sector/MovementOptionsComponent',
     'game/components/sector/PassagesComponent',
-    'game/components/sector/SectorControlComponent',
     'game/components/sector/SectorStatusComponent',
     'game/components/sector/SectorFeaturesComponent',
     'game/components/sector/SectorControlComponent',
     'game/components/sector/improvements/SectorImprovementsComponent',
 ], function (Ash,
+    GameGlobals,
     GlobalSignals,
 	PositionConstants,
 	LocaleConstants,
@@ -31,7 +32,6 @@ define([
     VisitedComponent,
 	MovementOptionsComponent,
 	PassagesComponent,
-	SectorConrolComponent,
 	SectorStatusComponent,
 	SectorFeaturesComponent,
 	SectorControlComponent,
@@ -43,14 +43,9 @@ define([
 		playerLocationNodes: null,
         itemsNodes: null,
 		
-		movementHelper: null,
-		levelHelper: null,
-		
 		neighboursDict: {},
 		
-		constructor: function (movementHelper, levelHelper) {
-			this.movementHelper = movementHelper;
-			this.levelHelper = levelHelper;
+		constructor: function () {
 		},
 	
 		addToEngine: function (engine) {
@@ -60,7 +55,19 @@ define([
 
 			var sys = this;
 			GlobalSignals.playerMovedSignal.add(function () {
-				sys.update();
+				sys.updateCurrentLocation();
+			});
+            GlobalSignals.fightEndedSignal.add(function () {
+				sys.updateCurrentLocation();
+            });
+			GlobalSignals.gameShownSignal.add(function () {
+				sys.updateCurrentLocation();
+			});
+			GlobalSignals.sectorScoutedSignal.add(function () {
+				sys.updateCurrentLocation();
+			});
+			GlobalSignals.gameResetSignal.add(function () {
+				sys.reset();
 			});
 		},
 	
@@ -68,35 +75,38 @@ define([
 			this.sectorNodes = null;
 		},
 	
-		update: function () {
-			if (this.playerLocationNodes.head)
-				this.updateSector(this.playerLocationNodes.head.entity);
+		updateCurrentLocation: function () {
+			if (!this.playerLocationNodes.head) return;
+            this.updateSector(this.playerLocationNodes.head.entity);
 		},
+        
+        reset: function () {
+            this.neighboursDict = {};
+        },
 		
 		updateSector: function (entity) {
 			var positionComponent = entity.get(PositionComponent);
 			var sectorStatusComponent = entity.get(SectorStatusComponent);
 			var featuresComponent = entity.get(SectorFeaturesComponent);
-			var passagesComponent = entity.get(PassagesComponent);
-			var hasEnemies = entity.get(SectorControlComponent).maxSectorEnemies > 0;
 			
 			if (!positionComponent) return;
 			
-			var levelEntity = this.levelHelper.getLevelEntityForSector(entity);
+			var levelEntity = GameGlobals.levelHelper.getLevelEntityForSector(entity);
 			
 			var isScouted = sectorStatusComponent.scouted;
 			var hasCampLevel = levelEntity.has(CampComponent);
 			var hasCampSector = entity.has(CampComponent);
-			
+            
 			this.updateGangs(entity);
 			this.updateMovementOptions(entity);
 			
-			sectorStatusComponent.canBuildCamp = isScouted && !hasCampLevel && featuresComponent.canHaveCamp() && !passagesComponent.passageUp && !passagesComponent.passageDown && !hasEnemies;
+			sectorStatusComponent.canBuildCamp = isScouted && !hasCampLevel && featuresComponent.canHaveCamp();
 			
 			if (hasCampSector && !hasCampLevel) levelEntity.add(entity.get(CampComponent));
 		},
 		
 		updateGangs: function (entity) {
+            if (GameGlobals.gameState.uiStatus.isHidden) return;
 			var sectorControlComponent = entity.get(SectorControlComponent);
 			var positionComponent = entity.get(PositionComponent);
 			
@@ -105,14 +115,15 @@ define([
 			var sys = this;
 			
 			function checkNeighbour(direction) {
-				var localeId = LocaleConstants.getPassageLocaleId(direction === 0 ? 0 : 1);
+				var localeId = LocaleConstants.getPassageLocaleId(direction);
 				var currentEnemies = sectorControlComponent.getCurrentEnemies(localeId);
+                if (currentEnemies <= 0) return;
 				
 				var neighbour = sys.getNeighbour(sectorKey, direction);
 				
 				if (neighbour) {
 					var neighbourSectorControlComponent = neighbour.get(SectorControlComponent);
-					var neighbourLocaleID = LocaleConstants.getPassageLocaleId(direction === 0 ? 1 : 0);
+					var neighbourLocaleID = LocaleConstants.getPassageLocaleId(PositionConstants.getOppositeDirection(direction));
 					var neighbourEnemies = neighbourSectorControlComponent.getCurrentEnemies(neighbourLocaleID);
 					var targetEnemies = Math.min(currentEnemies, neighbourEnemies);
 					
@@ -130,6 +141,7 @@ define([
 		},
 		
 		updateMovementOptions: function (entity) {
+            if (GameGlobals.gameState.uiStatus.isHidden) return;
 			var movementOptions = entity.get(MovementOptionsComponent);
 			var passagesComponent = entity.get(PassagesComponent);
 			var positionComponent = entity.get(PositionComponent);
@@ -139,7 +151,7 @@ define([
 			if (!this.neighboursDict[sectorKey]) this.findNeighbours(entity);
             
             var isAffectedByHazard = HazardConstants.isAffectedByHazard(featuresComponent, this.itemsNodes.head.items);
-			
+            
 			// Allow n/s/w/e movement if neighbour exists and there is no active blocker AND no hazard
 			for (var i in PositionConstants.getLevelDirections()) {
 				var direction = PositionConstants.getLevelDirections()[i];
@@ -147,8 +159,8 @@ define([
                 var isBlockedByHazard = neighbour ? isAffectedByHazard && !(neighbour.has(VisitedComponent) && !HazardConstants.isAffectedByHazard(neighbour.get(SectorFeaturesComponent), this.itemsNodes.head.items)) : false;
 				movementOptions.canMoveTo[direction] = neighbour != null;
                 movementOptions.canMoveTo[direction] = movementOptions.canMoveTo[direction] && !isBlockedByHazard;
-				movementOptions.canMoveTo[direction] = movementOptions.canMoveTo[direction] && !this.movementHelper.isBlocked(entity, direction);
-				movementOptions.cantMoveToReason[direction] = this.movementHelper.getBlockedReason(entity, direction);
+				movementOptions.canMoveTo[direction] = movementOptions.canMoveTo[direction] && !GameGlobals.movementHelper.isBlocked(entity, direction);
+				movementOptions.cantMoveToReason[direction] = GameGlobals.movementHelper.getBlockedReason(entity, direction);
                 if (isBlockedByHazard) movementOptions.cantMoveToReason[direction] = HazardConstants.getHazardDisabledReason(featuresComponent, this.itemsNodes.head.items);
 				if (!neighbour) movementOptions.cantMoveToReason[direction] = "Nothing here.";
                 
@@ -156,10 +168,10 @@ define([
 			}
 			
 			// Allow up/down movement if passages exists AND no hazard
-			movementOptions.canMoveTo[PositionConstants.DIRECTION_UP] = passagesComponent != null && !this.movementHelper.isBlocked(entity, PositionConstants.DIRECTION_UP);
-			movementOptions.cantMoveToReason[PositionConstants.DIRECTION_UP] = this.movementHelper.getBlockedReason(entity, PositionConstants.DIRECTION_UP);
-			movementOptions.canMoveTo[PositionConstants.DIRECTION_DOWN] = passagesComponent != null && !this.movementHelper.isBlocked(entity, PositionConstants.DIRECTION_DOWN);
-			movementOptions.cantMoveToReason[PositionConstants.DIRECTION_DOWN] = this.movementHelper.getBlockedReason(entity, PositionConstants.DIRECTION_DOWN);
+			movementOptions.canMoveTo[PositionConstants.DIRECTION_UP] = passagesComponent != null && !GameGlobals.movementHelper.isBlocked(entity, PositionConstants.DIRECTION_UP);
+			movementOptions.cantMoveToReason[PositionConstants.DIRECTION_UP] = GameGlobals.movementHelper.getBlockedReason(entity, PositionConstants.DIRECTION_UP);
+			movementOptions.canMoveTo[PositionConstants.DIRECTION_DOWN] = passagesComponent != null && !GameGlobals.movementHelper.isBlocked(entity, PositionConstants.DIRECTION_DOWN);
+			movementOptions.cantMoveToReason[PositionConstants.DIRECTION_DOWN] = GameGlobals.movementHelper.getBlockedReason(entity, PositionConstants.DIRECTION_DOWN);
 		},
 		
 		getNeighbour: function (sectorKey, direction) {

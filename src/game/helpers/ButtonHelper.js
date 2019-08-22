@@ -1,19 +1,18 @@
-define(['ash'], function (Ash) {
+define(['ash', 'game/GameGlobals'], function (Ash, GameGlobals) {
     
     var ButtonHelper = Ash.Class.extend({
 
-        constructor: function (levelHelper) {
-            this.levelHelper = levelHelper;
+        constructor: function () {
         },
 
-        getButtonSectorEntity: function (button) {
-            var sector = $(button).attr("sector");
+        getButtonSectorEntity: function ($button) {
+            var sector = $button.attr("sector");
             var sectorEntity = null;
             if (sector) {
                 var l = parseInt(sector.split(".")[0]);
                 var sX = parseInt(sector.split(".")[1]);
                 var sY = parseInt(sector.split(".")[2]);
-                sectorEntity = this.levelHelper.getSectorByPosition(l, sX, sY);
+                sectorEntity = GameGlobals.levelHelper.getSectorByPosition(l, sX, sY);
             }
             return sectorEntity;
         },

@@ -1,22 +1,12 @@
-// Current sector control status & wins needed for sector contorl (no more random encounters)
+// Status of enemies in a sector including locales
 define(['ash'], function (Ash) {
     
     var SectorControlComponent = Ash.Class.extend({
         
-        maxSectorEnemies: 0,
-        currentSectorEnemies: 0,
-        
         maxLocaleEnemies: {},
         currentLocaleEnemies: {},
         
-        constructor: function (enemies, localeEnemies) {
-            this.maxSectorEnemies = enemies;
-            this.currentSectorEnemies = enemies;
-            
-            this.initLocaleEnemies(localeEnemies);
-        },
-        
-        initLocaleEnemies: function (localeEnemies) {
+        constructor: function (localeEnemies) {
             this.maxLocaleEnemies = {};
             this.currentLocaleEnemies = {};
             
@@ -26,58 +16,52 @@ define(['ash'], function (Ash) {
             }
         },
         
-        hasControl: function () {
-            return this.currentSectorEnemies <= 0;
-        },
-        
         hasControlOfLocale: function (localeId) {
-            if (!localeId) return this.hasControl();
+            if (!localeId) false;
             return this.currentLocaleEnemies[localeId] <= 0;
         },
         
         getMaxEnemies: function (localeId) {
-            if (!localeId) return this.maxSectorEnemies;
             return this.maxLocaleEnemies[localeId] ? this.maxLocaleEnemies[localeId] : 0;
         },
         
         getCurrentEnemies: function (localeId) {
-            if (!localeId) return this.currentSectorEnemies;
+            if (!localeId) return 25;
             return this.currentLocaleEnemies[localeId] ? this.currentLocaleEnemies[localeId] : 0;
         },
         
         addWin: function (localeId) {
-            if (!localeId) {
-                console.log("add win " + localeId + " " + this.currentSectorEnemies);
-                this.currentSectorEnemies--;
-            } else {
-                console.log("add win " + localeId + " " + this.currentLocaleEnemies[localeId]);
-                this.currentLocaleEnemies[localeId]--;
-            }
+            if (!localeId) return;
+            if (!this.currentLocaleEnemies[localeId])  this.currentLocaleEnemies[localeId] = 0;
+            console.log("add win " + localeId + " " + this.currentLocaleEnemies[localeId]);
+            this.currentLocaleEnemies[localeId]--;
         },
-        
+         
         getSaveKey: function () {
-            return "SectorControl";
+            return "SCtrl";
         },
         
         getCustomSaveObject: function () {
             var copy = {};
-            copy.cSE = this.currentSectorEnemies;
-            copy.cLE = this.currentLocaleEnemies;
-            return copy;
+            copy.cLE = {};
+            if (this.currentLocaleEnemies && Object.keys(this.currentLocaleEnemies).length > 0) {
+                for (var locale in this.currentLocaleEnemies) {
+                    if (this.currentLocaleEnemies[locale] != this.maxLocaleEnemies[locale]) {
+                        copy.cLE[locale] = this.currentLocaleEnemies[locale];
+                    }
+                }
+            }
+            return Object.keys(copy.cLE).length > 0 ? copy : null;
         },
         
         customLoadFromSave: function (componentValues) {
-            if (componentValues.cSE)
-                this.currentSectorEnemies = componentValues.cSE;
-            else
-                this.currentSectorEnemies = componentValues.currentSectorEnemies;
+            var cLE = componentValues.currentLocaleEnemies;
             
-            var localeEnemies = componentValues.currentLocaleEnemies;
             if (componentValues.cLE)
-                localeEnemies = componentValues.cLE;
+                cLE = componentValues.cLE;
             
-            for (var locale in localeEnemies) {
-                this.currentLocaleEnemies[locale] = localeEnemies[locale];
+            for (var locale in cLE) {
+                this.currentLocaleEnemies[locale] = cLE[locale];
             }
         }
         

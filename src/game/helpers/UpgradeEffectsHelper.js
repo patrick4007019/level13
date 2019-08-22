@@ -1,13 +1,16 @@
 // Helper to check effects of upgrades on workers and buildings
 define([
     'ash',
+    'game/GameGlobals',
     'game/constants/UpgradeConstants',
     'game/constants/PlayerActionConstants',
     'game/constants/OccurrenceConstants',
 	'game/vos/ImprovementVO',
-], function (Ash, UpgradeConstants, PlayerActionConstants, OccurrenceConstants, ImprovementVO) {
+], function (Ash, GameGlobals, UpgradeConstants, PlayerActionConstants, OccurrenceConstants, ImprovementVO) {
     
     var UpgradeEffectsHelper = Ash.Class.extend({
+        
+        constructor: function () {},
 		
 		upgradesByWorker: {
 			"rope-maker": UpgradeConstants.upgradeIds.unlock_worker_rope,
@@ -15,7 +18,7 @@ define([
 			"concrete": UpgradeConstants.upgradeIds.unlock_building_cementmill,
 			"smith": UpgradeConstants.upgradeIds.unlock_building_smithy,
 			"soldier": UpgradeConstants.upgradeIds.unlock_building_barracks,
-            "scientist": UpgradeConstants.upgradeIds.upgrade_building_library2
+            "scientist": UpgradeConstants.upgradeIds.upgrade_building_library2,
 		},
         
         upgradesByUIEffects: {
@@ -33,9 +36,7 @@ define([
 		improvingUpgradesByEvent: {
 		},
 		
-		constructor: function (playerActionsHelper) {
-			this.playerActionsHelper = playerActionsHelper;
-			
+		constructor: function () {
 			this.improvementsByOccurrence[OccurrenceConstants.campOccurrenceTypes.trader] = improvementNames.market;
 			
 			this.improvingUpgradesByImprovement[improvementNames.storage] = ["upgrade_building_storage1", "upgrade_building_storage2" ];
@@ -50,7 +51,7 @@ define([
 			this.improvingUpgradesByImprovement[improvementNames.apothecary] = ["upgrade_building_apothecary"];
 			this.improvingUpgradesByImprovement[improvementNames.radiotower] = ["improve_building_market3"];
 			this.improvingUpgradesByImprovement[improvementNames.shrine] = ["upgrade_building_shrine"];
-			this.improvingUpgradesByImprovement[improvementNames.fortification] = ["upgrade_building_fortifications"];
+			this.improvingUpgradesByImprovement[improvementNames.stable] = ["upgrade_outgoing_caravans"];
 			
 			this.improvingUpgradesByWorker["scavenger"] = ["upgrade_worker_scavenger"];
 			this.improvingUpgradesByWorker["trapper"] = ["upgrade_worker_trapper"];
@@ -61,6 +62,7 @@ define([
 			this.improvingUpgradesByWorker["collector"] = ["upgrade_worker_collector1"];
 			this.improvingUpgradesByWorker["chemist"] = ["upgrade_worker_chemist"];
 			this.improvingUpgradesByWorker["apothecary"] = ["upgrade_building_apothecary"];
+			this.improvingUpgradesByWorker["scientist"] = ["unlock_building_researchcenter", "improve_building_market3"];
 			
 			this.improvingUpgradesByEvent[OccurrenceConstants.campOccurrenceTypes.trader] = [ "upgrade_building_market", "upgrade_building_market2" ];
             
@@ -78,7 +80,7 @@ define([
 				if (reqsDefinition.upgrades) {
 					for (var requiredUpgradeId in reqsDefinition.upgrades) {
 						if (requiredUpgradeId === upgradeId) {
-							improvementName = this.playerActionsHelper.getImprovementNameForAction(action, true);
+							improvementName = GameGlobals.playerActionsHelper.getImprovementNameForAction(action, true);
 							if (improvementName) buildings.push(improvementName);
 						}
 					}
@@ -97,7 +99,7 @@ define([
 				if (reqsDefinition.upgrades) {
 					for (var requiredUpgradeId in reqsDefinition.upgrades) {
 						if (requiredUpgradeId === upgradeId) {
-							item = this.playerActionsHelper.getItemForCraftAction(action);
+							item = GameGlobals.playerActionsHelper.getItemForCraftAction(action);
 							if (item) items.push(item.name);
 						}
 					}
@@ -231,6 +233,30 @@ define([
 			}
 			return upgradeLevel;
         },
+        
+        getWorkerLevel: function (worker, upgradesComponent) {
+            var result = 0;
+            
+            var isUnlocked = true;
+            var unlockingUpgrade = this.upgradesByWorker[worker];
+            if (unlockingUpgrade) {
+                isUnlocked = upgradesComponent.hasUpgrade(unlockingUpgrade);
+            }
+            
+            if (isUnlocked) {
+                result = 1;
+				var improvingUpgrades = this.improvingUpgradesByWorker[worker];
+                if (improvingUpgrades) {
+    				for (var i = 0; i < improvingUpgrades.length; i++) {
+    					if (upgradesComponent.hasUpgrade(improvingUpgrades[i])) {
+                            result += 1;
+                        }
+    				}
+                }
+            }
+            
+            return result;
+        }
 		
     });
     

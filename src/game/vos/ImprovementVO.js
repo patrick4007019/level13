@@ -6,12 +6,12 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 		collector_water: "Bucket",
 		
 		bridge: "Bridge",
-		passageUpStairs: "Passage Up (S)",
-		passageUpElevator: "Passage Up (E)",
-		passageUpHole: "Passage Up (H)",
-		passageDownStairs: "Passage Down (S)",
-		passageDownElevator: "Passage Down (E)",
-		passageDownHole: "Passage Down (H)",
+		passageUpStairs: "Staircase Up",
+		passageUpElevator: "Elevator Up (Repair)",
+		passageUpHole: "Elevator Up (Build)",
+		passageDownStairs: "Staircase Down",
+		passageDownElevator: "Elevator Down (Repair)",
+		passageDownHole: "Elevator Down (Build)",
         spaceship1: "Colony Hull",
         spaceship2: "Colony Shield",
         spaceship3: "Colony Life Support",
@@ -22,7 +22,7 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 		storage: "Storage",
 		campfire: "Campfire",
 		darkfarm: "Snail farm",
-		hospital: "Hospital",
+		hospital: "Clinic",
         generator: "Generator",
 		tradepost: "Trading post",
 		inn: "Inn",
@@ -35,10 +35,14 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 		radiotower: "Radio tower",
 		barracks: "Barracks",
 		fortification: "Fortification",
+		fortification2: "Concrete Fortification",
+        stable: "Caravan Stable",
 		aqueduct: "Aqueduct",
 		researchcenter: "Research center",
 		lights: "Lights",
 		ceiling: "Ceiling",
+        square: "Square",
+        garden: "Moss garden",
     };
 	
 	improvementTypes = {
@@ -51,6 +55,7 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
         constructor: function (name) {
 			this.name = name;
 			this.count = 0;
+            this.level = 1;
 			
 			this.initStorage();
 		},
@@ -73,9 +78,47 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 		getType: function() {
             return getImprovementType(this.name);
 		},
+        
+        getReputationBonus: function () {
+            return getImprovementReputationBonus(this.name);
+        },
+        
+        getKey: function () {
+            return this.name.toLowerCase().replace(" ", "-");
+        },
+        
+        isPassage: function () {
+            switch (this.name) {
+                case improvementNames.passageUpStairs:
+                case improvementNames.passageUpElevator:
+                case improvementNames.passageUpHole:
+                case improvementNames.passageDownStairs:
+                case improvementNames.passageDownElevator:
+                case improvementNames.passageDownHole:
+                    return true;
+                default:
+                    return false;
+            }
+        },
+        
+        getVisCount: function () {
+            switch (this.name) {
+                case improvementNames.lights:
+                    return 4;
+                case improvementNames.fortification:
+                case improvementNames.fortification2:
+                    return 2;
+                default:
+                    return 1;
+            }
+            
+        }
     });
     
+    // TODO make ImprovementConstants
+    
     getImprovementType = function (name) {
+        if (!name) return null;
         switch (name) {
             case improvementNames.collector_food:
             case improvementNames.collector_water:
@@ -93,6 +136,34 @@ define(['ash', 'game/vos/ResourcesVO'], function (Ash, ResourcesVO) {
 
             default:
                 return improvementTypes.camp;
+        }
+    };
+    
+    getImprovementReputationBonus = function (name) {
+        if (getImprovementType(name) == improvementTypes.level) return 0;
+        switch (name) {
+            case improvementNames.home:
+            case improvementNames.apothecary:
+            case improvementNames.smithy:
+            case improvementNames.cementmill:
+            case improvementNames.barracks:
+            case improvementNames.fortification:
+            case improvementNames.fortification2:
+            case improvementNames.storage:
+                return 0;
+            case improvementNames.darkfarm:
+            case improvementNames.inn:
+            case improvementNames.market:
+            case improvementNames.tradepost:
+            case improvementNames.campfire:
+                return 2;
+            case improvementNames.shrine:
+                return 3;
+            case improvementNames.square:
+            case improvementNames.garden:
+                return 5;
+            default:
+                return 1;
         }
     };
     

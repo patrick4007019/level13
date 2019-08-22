@@ -1,5 +1,8 @@
 define([
     'ash',
+    'utils/MathUtils',
+    'game/GameGlobals',
+    'game/GlobalSignals',
 	'game/constants/GameConstants',
 	'game/constants/LogConstants',
 	'game/constants/CampConstants',
@@ -9,112 +12,138 @@ define([
     'game/components/sector/improvements/SectorImprovementsComponent',
     'game/components/common/PositionComponent',
     'game/components/common/LogMessagesComponent',
-], function (Ash, GameConstants, LogConstants, CampConstants, CampNode, PlayerStatsNode, LevelComponent, SectorImprovementsComponent, PositionComponent, LogMessagesComponent) {
+], function (Ash, MathUtils, GameGlobals, GlobalSignals, GameConstants, LogConstants, CampConstants, CampNode, PlayerStatsNode, LevelComponent, SectorImprovementsComponent, PositionComponent, LogMessagesComponent) {
     var PopulationSystem = Ash.System.extend({
 	
         campNodes: null,
         playerNodes: null,
-		
-		lastPopulationIncreaseTimestamps: [],
-
-        constructor: function (gameState, levelHelper) {
-            this.gameState = gameState;
-            this.levelHelper = levelHelper;
-        },
+        
+        constructor: function () {},
 
         addToEngine: function (engine) {
             this.engine = engine;
             this.campNodes = engine.getNodeList(CampNode);
             this.playerNodes = engine.getNodeList(PlayerStatsNode);
+            GlobalSignals.add(this, GlobalSignals.gameStartedSignal, this.onGameStarted);
         },
 
         removeFromEngine: function (engine) {
+            GlobalSignals.removeAll(this);
             this.campNodes = null;
             this.playerNodes = null;
             this.engine = null;
         },
 
         update: function (time) {
-            if (this.gameState.isPaused) return;
+            if (GameGlobals.gameState.isPaused) return;
+            this.updateNodes(time);
+        },
+        
+        updateNodes: function (time) {
             for (var node = this.campNodes.head; node; node = node.next) {
-                this.updateNode(node, time + this.engine.extraUpdateTime);
+                this.updateNode(node, time);
             }
         },
 
         updateNode: function (node, time) {
+            this.updatePopulation(node, time);
+        },
+        
+        updatePopulation: function (node, time) {
 			var camp = node.camp;
-			var reputation = node.reputation.value;
-			var improvements = node.entity.get(SectorImprovementsComponent);
-			
-			this.updatePopulationCooldown(node);
-			
-			if (camp.populationCooldownSec === 0) {
-                var levelVO = this.levelHelper.getLevelEntityForSector(node.entity).get(LevelComponent).levelVO;
-                var reqRepCurPop = CampConstants.getRequiredReputation(Math.floor(camp.population));
-                var reqRepNextPop = CampConstants.getRequiredReputation(Math.floor(camp.population) + 1);
-                
-                var changePerSec;
-                if (reputation >= reqRepCurPop && reputation < reqRepNextPop) {
-                    changePerSec = 0;
-                } else if (reputation >= reqRepNextPop) {
-                    var repDiffValue = (reputation - reqRepNextPop) / 100 / 50;
-                    var popValue = 1 / Math.floor(camp.population+1) / 100;
-                    changePerSec = repDiffValue + popValue;
-                } else {
-                    changePerSec = (reputation - reqRepCurPop) / 100 / 25;
-                }
-                
-                changePerSec *= levelVO.populationGrowthFactor;
-                
-                var change = time * changePerSec * GameConstants.gameSpeedCamp;
-                camp.populationChangePerSec = changePerSec;
+            camp.population = camp.population || 0;
             
-				var oldPopulation = camp.population;
-				var housingCap = improvements.getCount(improvementNames.house) * CampConstants.POPULATION_PER_HOUSE;
-				housingCap += improvements.getCount(improvementNames.house2) * CampConstants.POPULATION_PER_HOUSE2;
-			
-				if (oldPopulation + change <= housingCap) {
-					camp.addPopulation(change);
-				} else if (oldPopulation < housingCap) {
-					camp.addPopulation(housingCap - oldPopulation);
-				}
-			
-				if (Math.floor(camp.population) !== Math.floor(oldPopulation)) {
-					this.handlePopulationChange(node, camp.population > oldPopulation);
-				}
-            } else {
-                camp.populationChangePerSec = 0;
+			var improvements = node.entity.get(SectorImprovementsComponent);
+            var maxPopulation = CampConstants.getHousingCap(improvements);
+            
+            var changePerSec = this.getPopulationChangePerSec(node);
+            var change = time * changePerSec * GameConstants.gameSpeedCamp;
+            var oldPopulation = camp.population;
+            var newPopulation = oldPopulation + change;
+            
+            newPopulation = Math.max(newPopulation, 0);
+            newPopulation = Math.min(newPopulation, maxPopulation);
+            change = newPopulation - oldPopulation;
+            changePerSec = change / time / GameConstants.gameSpeedCamp;
+            camp.addPopulation(change);
+            camp.populationChangePerSec = changePerSec;
+
+            if (Math.floor(camp.population) !== Math.floor(oldPopulation)) {
+                this.handlePopulationChange(node, camp.population > oldPopulation);
             }
         },
         
-        updatePopulationCooldown: function (node) {
-			var campPosition = node.entity.get(PositionComponent);
-			var level = campPosition.level;
-            var timeStamp = new Date().getTime();
-            var cooldownMillis = CampConstants.POPULATION_COOLDOWN_SECONDS * 1000 / GameConstants.gameSpeedCamp;
-			var lastIncreaseTimeStamp = this.lastPopulationIncreaseTimestamps[level] ? this.lastPopulationIncreaseTimestamps[level] : 0;
-            node.camp.populationCooldownSec = Math.max(0, (cooldownMillis - (timeStamp - lastIncreaseTimeStamp)) / 1000);
+        getPopulationChangePerSec: function (node) {
+			var camp = node.camp;
+			var reputation = node.reputation.value;
+            var levelVO = GameGlobals.levelHelper.getLevelEntityForSector(node.entity).get(LevelComponent).levelVO;
+            var reqRepCurPop = CampConstants.getRequiredReputation(Math.floor(camp.population));
+            var reqRepNextPop = CampConstants.getRequiredReputation(Math.floor(camp.population) + 1);
+            
+            var changePerSec;
+            if (reputation >= reqRepCurPop && reputation < reqRepNextPop) {
+                changePerSec = 0;
+            } else if (reputation >= reqRepNextPop) {
+                var repDiffValue = (reputation - reqRepNextPop) / 100 / 50;
+                var popValue = 1 / Math.floor(camp.population+1) / 100;
+                changePerSec = repDiffValue + popValue;
+            } else {
+                changePerSec = MathUtils.clamp((reputation - reqRepCurPop)/60/60, -1/60/5, -1/60/30);
+            }
+
+            if (changePerSec > 0) {
+                changePerSec *= levelVO.populationGrowthFactor;
+            }
+
+			var improvements = node.entity.get(SectorImprovementsComponent);
+            var housingCap = CampConstants.getHousingCap(improvements);
+            if (camp.population >= housingCap) {
+                changePerSec = Math.min(changePerSec, 0);
+            }
+            
+            return changePerSec;
         },
         
         handlePopulationChange: function (node, isIncrease) {
 			var campPosition = node.entity.get(PositionComponent);
-			var level = campPosition.level;
-            
             if (isIncrease) {
-                this.lastPopulationIncreaseTimestamps[level] = new Date().getTime();
                 node.camp.rumourpoolchecked = false;
             } else {
-                if (node.camp.getAssignedPopulation() > node.camp.population) {                
-                    for(var key in node.camp.assignedWorkers) {
-                        var count = node.camp.assignedWorkers[key];
-                        if (count > 0) {
-                            node.camp.assignedWorkers[key]--;
-                            break;
-                        }
+                this.reassignWorkers(node);
+            }
+            GlobalSignals.populationChangedSignal.dispatch(node.entity);
+            this.logChangePopulation(campPosition, isIncrease);
+        },
+        
+        reassignWorkers: function (node) {
+			var improvements = node.entity.get(SectorImprovementsComponent);
+            var reservedWorkers = {};
+            var foodConsumption = GameGlobals.campHelper.getFoodConsumptionPerSecond(node.camp.population);
+            var foodProduction = GameGlobals.campHelper.getFoodProductionPerSecond(1, improvements);
+            var waterConsumption = GameGlobals.campHelper.getWaterConsumptionPerSecond(node.camp.population);
+            var waterProduction = GameGlobals.campHelper.getWaterProductionPerSecond(1, improvements);
+            reservedWorkers[CampConstants.WORKER_TYPES.scavenger] = 1;
+            reservedWorkers[CampConstants.WORKER_TYPES.trapper] = Math.ceil(foodConsumption / foodProduction);
+            reservedWorkers[CampConstants.WORKER_TYPES.water] = Math.ceil(waterConsumption / waterProduction);
+            var prioritizedWorkers = [];
+            for (var key in node.camp.assignedWorkers) {
+                prioritizedWorkers.push({ name: key, min: reservedWorkers[key] || 0});
+            }
+            for (var key in reservedWorkers) {
+                prioritizedWorkers.push({ name: key, min: 0});
+            }
+            while (node.camp.getAssignedPopulation() > node.camp.population) {
+                for (var i = 0; i < prioritizedWorkers.length; i++) {
+                    var workerCheck = prioritizedWorkers[i];
+                    var count = node.camp.assignedWorkers[workerCheck.name];
+                    if (count > workerCheck.min) {
+                        node.camp.assignedWorkers[workerCheck.name]--;
+                        console.log("Unassigned a worker: " + workerCheck.name);
+                        break;
                     }
                 }
             }
-            this.logChangePopulation(campPosition, isIncrease);
+            GlobalSignals.workersAssignedSignal.dispatch(node.entity);
         },
         
         logChangePopulation: function (campPosition, isIncrease) {
@@ -124,9 +153,13 @@ define([
                 if (isIncrease) {
                     logComponent.addMessage(LogConstants.MSG_ID_POPULATION_NATURAL, "A stranger shows up.");
                 } else {
-                    logComponent.addMessage(LogConstants.MSG_ID_POPULATION_NATURAL, "An inhabitant packs their things and heads out into the City alone.");
+                    logComponent.addMessage(LogConstants.MSG_ID_POPULATION_NATURAL, "An inhabitant packs their belongings and leaves.");
                 }
             }
+        },
+        
+        onGameStarted: function () {
+            this.updateNodes(0,0);
         }
     });
 

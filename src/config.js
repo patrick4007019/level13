@@ -1,18 +1,27 @@
-// Set the require.js configuration for your application.
 require.config({
 
-    // Initialize the application with the main application file
     deps: ["level13-app"],
 
-    paths: {
-        // JavaScript folders
-        brejep: "../lib/brejep",
-        utils: "../lib/utils",
-        game: "game",
+    waitSeconds: 10,
 
-        // Libraries
+    baseUrl: 'src',
+
+    paths: {
+        brejep: "../lib/brejep",
         ash: "../lib/ash/ash.min",
-        jquery: "../lib/jquery/"
+        jquery: "../lib/jquery/",
+        lzstring: "../lib/lzstring",
+        utils: "utils",
+        game: "game"
     },
-    
+
+    config: {
+        'level13-app': {
+            'isDebugVersion': false,
+            'isCheatsEnabled': false,
+            'isDebugOutputEnabled': false,
+            'isAutosaveEnabled': true,
+        }
+    }
+
 });

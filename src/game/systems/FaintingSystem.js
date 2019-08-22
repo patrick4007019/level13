@@ -1,7 +1,9 @@
 // Checks hunger & thirst when exploring and determines when, and how, the player faints
 define([
     'ash',
-    'game/systems/SaveSystem',
+    'game/GameGlobals',
+    'game/GlobalSignals',
+    'game/constants/GameConstants',
     'game/constants/PlayerActionConstants',
     'game/constants/LogConstants',
     'game/constants/PositionConstants',
@@ -22,7 +24,9 @@ define([
     'game/components/common/LogMessagesComponent',
     'game/systems/PlayerPositionSystem'
 ], function (Ash,
-    SaveSystem,
+    GameGlobals,
+    GlobalSignals,
+    GameConstants,
     PlayerActionConstants,
 	LogConstants,
 	PositionConstants,
@@ -52,10 +56,7 @@ define([
         nearestCampNodes: null,
 		sectorNodes: null,
 
-        constructor: function (uiFunctions, playerActionFunctions, playerActionResultsHelper) {
-			this.uiFunctions = uiFunctions;
-			this.playerActionFunctions = playerActionFunctions;
-            this.playerActionResultsHelper = playerActionResultsHelper;
+        constructor: function () {
         },
 
         addToEngine: function (engine) {
@@ -139,7 +140,7 @@ define([
             var featuresComponent = sector.get(SectorFeaturesComponent);
 			var sectorResourcesSca = featuresComponent.resourcesScavengable;
 			var sectorResourcesCo = featuresComponent.resourcesCollectable;
-			return (sectorResourcesSca.getResource(resourceNames.food) > 0 || sectorResourcesCo.getResource(resourceNames.food) > 0) && 
+			return (sectorResourcesSca.getResource(resourceNames.food) > 0 || sectorResourcesCo.getResource(resourceNames.food) > 0) &&
                 (sectorResourcesSca.getResource(resourceNames.water) > 0 || sectorResourcesCo.getResource(resourceNames.water) > 0);
 		},
 		
@@ -150,6 +151,7 @@ define([
 		},
 		
 		fadeOutToLastVisitedCamp: function (showPopup, handleResults, msgAdjective) {
+            if (!this.lastVisitedCampNodes.head) return;
 			var msgMain = showPopup ? "Exhausted and " + msgAdjective + ", you sit to rest. Your consciousness fades.<br/>When you wake up, you find yourself back in camp." : null;
 			var msgLog = "The world fades. You wake up with no memory how you found your way back.";
 			this.fadeOut(msgMain, msgLog, handleResults, this.lastVisitedCampNodes.head.entity, 1, 1);
@@ -192,20 +194,20 @@ define([
 			} else if (nearestVisitedSafeSector) {
 				this.fadeOut(msgMain, msgLog, true, nearestVisitedSafeSector, 1, 0);
 			} else {
-				console.log("WARN: Nowhere to fade out to.");
+				if (GameGlobals.logWarnings) console.log("WARN: Nowhere to fade out to.");
 			}
 		},
 		
 		fadeOut: function (msg, msgLog, handleResults, sector, loseInventoryProbability, injuryProbability) {
 			if (handleResults) {
-				var resultVO = this.playerActionResultsHelper.getFadeOutResults(loseInventoryProbability, injuryProbability);
+				var resultVO = GameGlobals.playerActionResultsHelper.getFadeOutResults(loseInventoryProbability, injuryProbability);
                 var sys = this;
                 this.playerResourcesNodes.head.entity.add(new PlayerActionResultComponent(resultVO));
                 var resultPopUpCallback = function (isTakeAll) {
-                    sys.playerActionResultsHelper.collectRewards(isTakeAll, resultVO);  
-                    sys.teleport(msgLog, sector);                  
+                    GameGlobals.playerActionResultsHelper.collectRewards(isTakeAll, resultVO);
+                    sys.teleport(msgLog, sector);
                 };
-				if (msg) this.uiFunctions.showResultPopup("Exhaustion", msg, resultVO, resultPopUpCallback);
+				if (msg) GameGlobals.uiFunctions.showResultPopup("Exhaustion", msg, resultVO, resultPopUpCallback);
 			} else {
                 this.teleport(msgLog, sector);
             }
@@ -218,12 +220,16 @@ define([
 			playerPosition.sectorX = sectorPosition.sectorX;
 			playerPosition.sectorY = sectorPosition.sectorY;
             
+            if (GameGlobals.logInfo) console.log("faint teleport " + sectorPosition);
+            
             // TODO make neater way to request position update - needs to happen before enterCamp which relies on nearest camp node
             this.engine.getSystem(PlayerPositionSystem).updateSectors();
             
 			if (sector.has(CampComponent)) {
-                this.uiFunctions.playerActions.enterCamp(false);
-                this.uiFunctions.showTab(this.uiFunctions.elementIDs.tabs.in);
+                GameGlobals.playerActionFunctions.enterCamp(false);
+                GameGlobals.uiFunctions.showTab(GameGlobals.uiFunctions.elementIDs.tabs.in);
+            } else {
+                if (GameGlobals.logWarnings) console.log("WARN: Fainting target sector has no CampComponent");
             }
             
 			this.log(msgLog);
@@ -239,8 +245,7 @@ define([
 		},
         
         save: function () {
-            var saveSystem = this.engine.getSystem(SaveSystem);
-            saveSystem.save();
+            GlobalSignals.saveGameSignal.dispatch();
         }
 
     });

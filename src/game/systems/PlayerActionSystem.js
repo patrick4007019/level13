@@ -1,18 +1,17 @@
 // Manages player actions that have a duration
 define([
     'ash',
+    'game/GameGlobals',
     'game/nodes/PlayerActionNode',
-], function (Ash, PlayerActionNode) {
+], function (Ash, GameGlobals, PlayerActionNode) {
     var PlayerActionSystem = Ash.System.extend({
 	
         playerActionNodes: null,
 		
         gameState: null,
-		playerActionFunctions: null,
 
-        constructor: function (gameState, playerActionFunctions) {
-            this.gameState = gameState;
-			this.playerActionFunctions = playerActionFunctions;
+        constructor: function () {
+			this.playerActionFunctions = GameGlobals.playerActionFunctions;
         },
 
         addToEngine: function (engine) {
@@ -25,19 +24,19 @@ define([
             this.engine = null;
         },
 
-        update: function (time) {
-            if (this.gameState.isPaused) return;
+        update: function (time, extraUpdateTime) {
+            if (GameGlobals.gameState.isPaused) return;
             for (var node = this.playerActionNodes.head; node; node = node.next) {
-                this.updateNode(node, this.engine.extraUpdateTime);
+                this.updateNode(node, extraUpdateTime);
             }
         },
 
-        updateNode: function (node, extraTime) {
+        updateNode: function (node, extraUpdateTime) {
             var now = new Date().getTime();
             var newDict = {};
             var newList = [];
             
-            node.playerActions.applyExtraTime(extraTime);
+            node.playerActions.applyExtraTime(extraUpdateTime);
             
             var timeStamp;
 			var action;

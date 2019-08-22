@@ -1,5 +1,6 @@
 // Loader for the changelog.json
-define(['ash'], function (Ash) {
+define(['ash', 'game/GameGlobals', 'game/GlobalSignals', 'game/constants/GameConstants'],
+function (Ash, GameGlobals, GlobalSignals, GameConstants) {
 
     var ChangeLogHelper = Ash.Class.extend({
 		
@@ -9,23 +10,45 @@ define(['ash'], function (Ash) {
 		constructor: function () {
 			var helper = this;
             $.getJSON('changelog.json', function (json) {
-				helper.loadingSuccessfull = true;
+				helper.loadingSuccessful = true;
 				helper.versions = json.versions;
+                var version = helper.getCurrentVersionNumber();
+                console.log("Loaded version: " + version);
+                gtag('set', { 'app_version': version });
+                GlobalSignals.changelogLoadedSignal.dispatch();
+                helper.displayVersionWarnings();
 			})
 			.fail(function (jqxhr, textStatus, error) {
-				helper.loadingSuccessfull = false;
-				var err = textStatus;
+				helper.loadingSuccessful = false;
+                helper.versions = [];
+                console.log("Failed to load version.");
+				var err = "";
+                if (jqxhr && jqxhr.status) err += "[" + jqxhr.status + "] ";
+                err += textStatus;
 				if (error) err += ", " + error;
-				console.log("WARN: Change log request failed: " + err);
+                gtag('set', { 'app_version': 'unknown' });
+                helper.displayVersionWarnings();
 			});
 		},
+        
+        displayVersionWarnings: function () {
+            if (GameConstants.isDebugVersion) return;
+			var currentVersion = this.getCurrentVersion();
+            if (!currentVersion || !currentVersion.final) {
+                GameGlobals.uiFunctions.showInfoPopup(
+                    "Warning",
+                    "Looks like you are playing an unsupported version of Level 13.</br>Continue at your own risk or play the latest official version <a href='" + GameConstants.gameURL + "'>here</a>.",
+                    "Continue"
+                );
+            }
+        },
 		
 		getCurrentVersionNumber: function () {
 			var currentVersion = this.getCurrentVersion();
 			if (currentVersion) {
 				return this.getVersionNumber(currentVersion);
 			}
-			return "unknown version";
+			return "unknown";
 		},
         
         getCurrentVersionDate: function () {
@@ -43,15 +66,16 @@ define(['ash'], function (Ash) {
 				v = this.versions[i];
 				if (v.changes.length === 0) continue;
 				html += "<div class='changelog-version'>";
-				html += "version " + this.getVersionNumber(v);
-				if (!v.final) html += " (work in progress)";
+				html += "<b>version " + this.getVersionNumber(v);
+				if (v.final) html += " released: " + v.released + "";
+                else html += " (work in progress)";
+                html += "</b>";
 				html += "<ul>";
 				for (var j in v.changes) {
 					var change = v.changes[j];
-                    if (change.type === "UI") continue;
-					html += "<li>";
-					// html += "<span class='changelog-type changelog-type-" + change.type + "'>" + change.type + "</span>";
-					html += "<span class='changelog-summary'>" + change.summary + "</span>";
+                    var summary = change.summary.trim().replace(/\.$/, "");
+					html += "<li class='changelog-" + change.type + "'>";
+					html += "<span class='changelog-summary'>" + summary + "</span>";
 					html += "</li>";
 				}
 				html += "</ul>";

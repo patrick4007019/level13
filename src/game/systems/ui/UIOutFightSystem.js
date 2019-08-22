@@ -1,5 +1,6 @@
 define([
     'ash',
+    'game/GameGlobals',
     'game/GlobalSignals',
     'game/constants/FightConstants',
     'game/constants/ItemConstants',
@@ -11,14 +12,9 @@ define([
     'game/components/player/ItemsComponent',
     'game/components/sector/FightComponent',
     'game/components/sector/FightEncounterComponent',
-    'game/components/sector/EnemiesComponent',
-    'game/components/sector/SectorControlComponent',
-], function (Ash, GlobalSignals, FightConstants, ItemConstants, TextConstants, UIConstants, PlayerLocationNode, PlayerStatsNode, FightNode, ItemsComponent, FightComponent, FightEncounterComponent, EnemiesComponent, SectorControlComponent) {
+    'game/components/sector/EnemiesComponent'
+], function (Ash, GameGlobals, GlobalSignals, FightConstants, ItemConstants, TextConstants, UIConstants, PlayerLocationNode, PlayerStatsNode, FightNode, ItemsComponent, FightComponent, FightEncounterComponent, EnemiesComponent) {
     var UIOutFightSystem = Ash.System.extend({
-	
-		uiFunctions: null,
-		playerActionResultsHelper: null,
-		playerActionsHelper: null,
 		
 		playerLocationNodes: null,
 		playerStatsNodes: null,
@@ -30,10 +26,7 @@ define([
         wasFightActive: false,
         isFightPopupOpen: false,
 	
-        constructor: function (uiFunctions, playerActionResultsHelper, playerActionsHelper) {
-			this.uiFunctions = uiFunctions;
-			this.playerActionResultsHelper = playerActionResultsHelper;
-			this.playerActionsHelper = playerActionsHelper;
+        constructor: function () {
         },
 
         addToEngine: function (engine) {
@@ -58,7 +51,8 @@ define([
             this.fightNodes = null;
         },
 
-        update: function (time) {
+        update: function () {
+            if (GameGlobals.gameState.uiStatus.isHidden) return;
             if (!this.isFightPopupOpen)
                 return;
             
@@ -66,20 +60,20 @@ define([
 			var fightFinished = this.fightNodes.head !== null && this.fightNodes.head.fight.finished === true;
 			var fightWon = fightFinished && this.fightNodes.head.fight.won;
 			
-			this.uiFunctions.toggle("#out-action-fight-confirm", !fightActive && !fightFinished);
-			this.uiFunctions.toggle("#out-action-fight-close", fightFinished && !fightWon);
-			this.uiFunctions.toggle("#out-action-fight-next", fightFinished && fightWon);
-            this.uiFunctions.toggle("#out-action-fight-cancel", !fightFinished && !fightActive);
-            this.uiFunctions.toggle("#fight-buttons-main", !fightActive);
-            this.uiFunctions.toggle("#fight-buttons-infightactions", fightActive);
+			GameGlobals.uiFunctions.toggle("#out-action-fight-confirm", !fightActive && !fightFinished);
+			GameGlobals.uiFunctions.toggle("#out-action-fight-close", fightFinished && !fightWon);
+			GameGlobals.uiFunctions.toggle("#out-action-fight-next", fightFinished && fightWon);
+            GameGlobals.uiFunctions.toggle("#out-action-fight-cancel", !fightFinished && !fightActive);
+            GameGlobals.uiFunctions.toggle("#fight-buttons-main", !fightActive);
+            GameGlobals.uiFunctions.toggle("#fight-buttons-infightactions", fightActive);
 			
-			this.uiFunctions.toggle("#fight-popup-control-info", !fightActive);
-			this.uiFunctions.toggle("#fight-popup-bars", fightActive);
-			this.uiFunctions.toggle("#fight-popup-self-info", fightActive);
-			this.uiFunctions.toggle("#list-fight-followers", fightActive);
-			this.uiFunctions.toggle("#fight-popup-results", fightFinished);
+			GameGlobals.uiFunctions.toggle("#fight-popup-control-info", !fightActive);
+			GameGlobals.uiFunctions.toggle("#fight-popup-bars", fightActive);
+			GameGlobals.uiFunctions.toggle("#fight-popup-self-info", fightActive);
+			GameGlobals.uiFunctions.toggle("#list-fight-followers", fightActive);
+			GameGlobals.uiFunctions.toggle("#fight-popup-results", fightFinished);
             
-			this.uiFunctions.toggle("#fight-desc", !fightActive);
+			GameGlobals.uiFunctions.toggle("#fight-desc", !fightActive);
 			
 			$("#fight-popup-enemy-info").toggleClass("strike-through", fightFinished && fightWon);
 			
@@ -88,6 +82,9 @@ define([
             }
             
             // NOTE: can happen in AutoPlay
+			var sector = this.playerLocationNodes.head.entity;
+            if (sector == null)
+                return;
 			var encounterComponent = sector.get(FightEncounterComponent);
             if (encounterComponent == null)
                 return;
@@ -115,16 +112,16 @@ define([
                 if (item.type !== ItemConstants.itemTypes.follower)
                     continue;
                 this.numFollowers++;
-                $("ul#list-fight-followers").append("<li>" + UIConstants.getItemDiv(item, -1, true, false) + "</li>");
+                $("ul#list-fight-followers").append("<li>" + UIConstants.getItemDiv(null, item, null, UIConstants.getItemCallout(item, true), true) + "</li>");
             }
-            this.uiFunctions.generateCallouts("ul#list-fight-followers");
+            GameGlobals.uiFunctions.generateCallouts("ul#list-fight-followers");
         },
 	
 		updateFightCommon: function (fightPending) {
 			var sector = this.playerLocationNodes.head.entity;
 			var encounterComponent = sector.get(FightEncounterComponent);
             
-			$("#fight-title").text(this.getTitleByContext(encounterComponent.context));
+			$("#fight-title").text(this.getTitleByContext(encounterComponent));
 			
 			// Enemy info
 			var enemiesComponent = sector.get(EnemiesComponent);
@@ -183,19 +180,20 @@ define([
             // TODO remove hard-coding of items usable in fight, instead have fight effect desc in ItemVO (damage, heal, defend, stun)
             // TODO show fight effect of items in fight ui
             var itemsToShow = [];
-            if (itemsComponent.getCountById("glowstick_1") > 0) itemsToShow.push(itemsComponent.getItem("glowstick_1"));
+            if (itemsComponent.getCountById("glowstick_1") > 0) itemsToShow.push(itemsComponent.getItem("glowstick_1", null, false));
             var numItemsShown = $("#fight-buttons-infightactions button").length;
             if (numItemsShown !== itemsToShow.length) {
                 $("#fight-buttons-infightactions").empty();
                 for(var i = 0; i < itemsToShow.length; i++) {
                     var item = itemsToShow[i];
-                    var action = "use_item_fight_" + item.id;                    
+                    var action = "use_item_fight_" + item.id;
                     $("#fight-buttons-infightactions").append("<button class='action' action='" + action + "'>" + item.name + "</button>");
                 }
                 
-                this.uiFunctions.registerActionButtonListeners("#fight-buttons-infightactions");
-                this.uiFunctions.generateButtonOverlays("#fight-buttons-infightactions");
-                this.uiFunctions.generateCallouts("#fight-buttons-infightactions");
+                GameGlobals.uiFunctions.registerActionButtonListeners("#fight-buttons-infightactions");
+                GameGlobals.uiFunctions.generateButtonOverlays("#fight-buttons-infightactions");
+                GameGlobals.uiFunctions.generateCallouts("#fight-buttons-infightactions");
+                GlobalSignals.elementCreatedSignal.dispatch();
             }
 		},
 		
@@ -205,28 +203,31 @@ define([
 			var isWon = this.fightNodes.head.fight.won;
 			$("#fight-desc").text(isWon ? this.getWonDescriptionByContext(encounterComponent.context) : this.getLostDescriptionByContext(encounterComponent.context));
 			
-			this.uiFunctions.toggle("#fight-results-win-header", isWon);
-			this.uiFunctions.toggle("#fight-results-win-res", isWon);
-			this.uiFunctions.toggle("#fight-results-win-items", isWon);
-			this.uiFunctions.toggle("#fight-results-lose-header", !isWon && false);
-			this.uiFunctions.toggle("#fight-results-lose-items", !isWon && false);
+			GameGlobals.uiFunctions.toggle("#fight-results-win-header", isWon);
+			GameGlobals.uiFunctions.toggle("#fight-results-win-res", isWon);
+			GameGlobals.uiFunctions.toggle("#fight-results-win-items", isWon);
+			GameGlobals.uiFunctions.toggle("#fight-results-lose-header", !isWon && false);
+			GameGlobals.uiFunctions.toggle("#fight-results-lose-items", !isWon && false);
 			
 			if (this.displayedRewards !== this.fightNodes.head.fight.resultVO) {
-				$("#fight-popup-results").html(this.playerActionResultsHelper.getRewardDiv(this.fightNodes.head.fight.resultVO, true));
-				this.uiFunctions.generateCallouts("#fight-popup-results");
+				$("#fight-popup-results").html(GameGlobals.playerActionResultsHelper.getRewardDiv(this.fightNodes.head.fight.resultVO, true));
+				GameGlobals.uiFunctions.generateCallouts("#fight-popup-results");
 				this.displayedRewards = this.fightNodes.head.fight.resultVO;
 			}
         },
         
-        getTitleByContext: function (context) {
-			var baseActionID = this.playerActionsHelper.getBaseActionID(context);
+        getTitleByContext: function (encounterComponent) {
+			var baseActionID = GameGlobals.playerActionsHelper.getBaseActionID(encounterComponent.context);
+            if (baseActionID === "fight_gang") {
+                return "Fight " + (encounterComponent.totalEnemies - encounterComponent.pendingEnemies + 1) + " / " + encounterComponent.totalEnemies;
+            }
             return baseActionID.replace(/_/g, " ");
         },
 		
 		getDescriptionByContext: function (context, enemy) {
             var enemiesNoun = TextConstants.getEnemyNoun([enemy]);
 			var enemyNoun = TextConstants.depluralify(enemiesNoun);
-			var baseActionID = this.playerActionsHelper.getBaseActionID(context);
+			var baseActionID = GameGlobals.playerActionsHelper.getBaseActionID(context);
 			switch (baseActionID) {
 				case "scavenge":
 					return "surprised by " + TextConstants.addArticle(enemyNoun) + " while scavenging";
@@ -244,7 +245,7 @@ define([
         },
 		
 		getWonDescriptionByContext: function (context) {
-			var baseActionID = this.playerActionsHelper.getBaseActionID(context);
+			var baseActionID = GameGlobals.playerActionsHelper.getBaseActionID(context);
 			switch (baseActionID) {
 				case "scavenge":
 				case "scout":
@@ -263,7 +264,7 @@ define([
         },
 		
 		getLostDescriptionByContext: function (context) {
-			var baseActionID = this.playerActionsHelper.getBaseActionID(context);
+			var baseActionID = GameGlobals.playerActionsHelper.getBaseActionID(context);
 			switch (baseActionID) {
 				case "scavenge":
 				case "scout_locale_u":
