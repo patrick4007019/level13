@@ -83,6 +83,11 @@ span.msg-count, span.time, span.msg-camp-level {
 	margin-bottom: 5px;
 }
 
+#grid-switch-content {
+	z-index: 1;
+	position: relative;
+}
+
 #grid-main-header .unit {
 	padding: 2px;
 	position: relative;
@@ -113,32 +118,27 @@ span.msg-count, span.time, span.msg-camp-level {
 }
 
 #header-self-bar > span {
-   display: block;
+	display: block;
 }
 
 #header-self-bar .stats-indicator {
-   margin: 1px 0px;
-   width: 100%;
-   line-height: 1em;
+	margin: 1px 0px;
+	width: 100%;
+	line-height: 1em;
 }
 
 #header-self-bar .callout-container {
-   width: 100%;
+	width: 100%;
 }
 
 #header-self-bar .stats-indicator .value {
-   font-size: @font-size-small;
-   margin: 3px 0;
+	font-size: @font-size-small;
+	margin: 3px 0;
 }
 
 #header-self-bar .info-callout {
-   width: 75px;
-   max-width: 75px;
-}
-
-#header-self-inout img {
-   -webkit-transition: -webkit-transform 1s;
-   transition: all 1s;
+	width: 75px;
+	max-width: 75px;
 }
 
 #header-self-bar .change-indicator {
@@ -148,6 +148,23 @@ span.msg-count, span.time, span.msg-camp-level {
 
 #header-self-bar div.callout-arrow-up {
 	margin: 0 0 0 (@header-self-bar-width/2 - @callout-arrow-size);
+}
+
+// LOCATION HEADER
+
+#grid-location-header {
+	padding: 10px 0px 0px 0px;
+}
+
+#grid-location-header h1, #grid-location-header img {
+	display: inline-block;
+	vertical-align: middle;
+}
+
+#level-icon {
+	margin: 3px 3px 3px 0;
+	width: 2.5em;
+	height: 2.5em;
 }
 
 // BAG SCREEN
@@ -179,7 +196,7 @@ span.msg-count, span.time, span.msg-camp-level {
 
 // PLAYER POSITION INDICATOR
 
-span#out-position-indicator, span#out-position-indicator-header {
+span#out-position-indicator {
 	font-size: 80%;
 	line-height: 1.1em;
 }
@@ -218,30 +235,44 @@ ul#game-options li, ul#game-options-extended li {
 
 // CAMP buildings
 
-span.improvement-count {
-    font-weight: bold;
+span.improvement-badge {
+	padding: 5px;
+	margin: 1px;
+	background-color: @color-bg-box-1;
+	border: 1px solid @color-border-box-1;
+	border-radius: 5px;
+	min-width: 1em;
+	display: inline-block;
+	vertical-align: middle;
+	text-align: center;
 }
 
-span.improvement-badge {
-    padding: 5px;
-    margin: 1px;
-    background-color: #282a28;
-    border: 1px solid #3a3a3a;
-    border-radius: 5px;
-    min-width: 1em;
-    display: inline-block;
-    vertical-align: middle;
-    text-align: center;
+span.improvement-badge.badge-disabled {
+	color: @color-text-disabled;
+}
+
+span.improvement-count {
+	font-weight: bold;
+}
+
+span.improvement-badge.improvement-upgrade-level {
+	position: absolute;
+	background-color: @color-bg-element-1;
+	top: -1px;
+	right: -1px;
+	padding: 0 1px !important;
+	font-size: @font-size-tiny;
+	width: 1em;
 }
 
 // CHANGELOG
 
 .changelog-type {
-   padding: 2px 5px;
-   border-width: 1px;
-   border-style: solid;
-   margin: 0px 5px 0px 0px;
-   border-color: @color-border-box-1;
+	padding: 2px 5px;
+	border-width: 1px;
+	border-style: solid;
+	margin: 0px 5px 0px 0px;
+	border-color: @color-border-box-1;
 }
 
 #changelog {
@@ -328,6 +359,20 @@ span.improvement-badge {
 
 // TRIBE OVERVIEW TABLE
 
+.camp-overview-production, .camp-overview-stats {
+	font-size: @font-size-small;
+}
+
+.camp-overview-name {
+	max-width: 5em;
+	white-space: nowrap;
+	overflow-x: hidden;
+}
+
+.camp-overview-btn {
+	text-align: center;
+}
+
 .camp-overview-level-container {
 	border-radius: 1.75em;
 	text-align: center;
@@ -348,6 +393,7 @@ span.improvement-badge {
 
 #resultlist-inventorymanagement-found ul li, #resultlist-loststuff-lost ul li {
 	border-width: 0px;
+	padding-bottom: 5px;
 }
 
 ul.resultlist li {
@@ -362,14 +408,14 @@ ul.resultlist-positive li:before {
 // MAIN SWITCH (TAB BAR)
 
 #switch {
-    background-color: @color-bg-page;
+	background-color: @color-bg-page;
 }
 
 // CONTENT GRID
-    
+	
 div.grid-content {
 	background: @color-bg-box-1;
-	border: 2px solid @color-border-box-1;
+	border: @border-width-box-1 solid @color-border-box-1;
 }
 
 // IN-GAME DATE
@@ -391,7 +437,7 @@ div.grid-content {
 	margin: 0px 3px;
 	border-width: 2px;
 	border-style: solid;
-    vertical-align: middle;
+	vertical-align: middle;
 }
 
 .blueprint-piece-box-found {
@@ -405,9 +451,9 @@ div.grid-content {
 }
 
 .blueprint-piece-box img {
-    margin: 0.4em;
-    width: 1.2em;
-    height: 1.2em;
+	margin: 0.4em;
+	width: 1.2em;
+	height: 1.2em;
 }
 
 // CAMP EVENTS
@@ -420,4 +466,27 @@ div.grid-content {
 @keyframes event-end {
 	0%	{opacity: inherit}
 	50%	{opacity: 0.4}
+}
+
+// FIGHT POPUP
+
+#fight-popup {
+	min-width: 35%;
+}
+
+.fight-damage-indicator {
+	margin: 0;
+	font-size: @font-size-small;
+	font-weight: bold;
+	color: @color-border-warning;
+	position: absolute;
+	top: 0;
+	right: -3em;
+	.opacity-transition-reset();
+}
+
+// MISC
+
+#manage-save-textarea {
+	font-size: @font-size-small;
 }

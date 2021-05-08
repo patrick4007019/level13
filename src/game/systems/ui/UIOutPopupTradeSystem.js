@@ -6,7 +6,7 @@ define([
 	'game/nodes/PlayerLocationNode',
 	'game/nodes/player/ItemsNode',
 	'game/components/sector/events/TraderComponent',
-    'game/elements/HorizontalSelect',
+	'game/elements/HorizontalSelect',
 	'game/constants/UIConstants',
 	'game/constants/ItemConstants',
 	'game/constants/TradeConstants',
@@ -26,7 +26,7 @@ define([
 					sys.updateLists();
 				}
 			});
-            this.initElements();
+			this.initElements();
 			return this;
 		},
 
@@ -41,16 +41,15 @@ define([
 			this.playerLocationNodes = null;
 			this.itemNodes = null;
 		},
-            
-        initElements: function () {
-            var sys = this;
-            $("#incoming-caravan-popup-reset").click(function (e) {
-                console.log("reset");
-                sys.clearSelection();
-                sys.updateLists();
-            });
-            this.multiplierSelect = HorizontalSelect.init("incoming-caravan-popup-multiplier", "Selection");
-        },
+			
+		initElements: function () {
+			var sys = this;
+			$("#incoming-caravan-popup-reset").click(function (e) {
+				sys.clearSelection();
+				sys.updateLists();
+			});
+			this.multiplierSelect = HorizontalSelect.init("incoming-caravan-popup-multiplier", "Selection");
+		},
 
 		setupPopup: function () {
 			var traderComponent = this.playerLocationNodes.head.entity.get(TraderComponent);
@@ -79,7 +78,7 @@ define([
 			this.campInventoryLis = {};
 
 			var sys = this;
-            var highestAmount = 0;
+			var highestAmount = 0;
 
 			var addLis = function (li, key, section) {
 				var inventoryLi = $(li).clone();
@@ -108,7 +107,7 @@ define([
 			for (var j in caravan.buyItemTypes) {
 				var category = caravan.buyItemTypes[j];
 				if (category == "uniqueEquipment" || category == "follower") continue;
-				var itemList = itemsComponent.getAllByType(ItemConstants.itemTypes[category]);
+				var itemList = itemsComponent.getAllByType(ItemConstants.itemTypes[category], true);
 				for (var k in itemList) {
 					if (itemList[k].equipped) continue;
 					if (!this.campTotalItems[itemList[k].id])
@@ -118,10 +117,13 @@ define([
 			}
 
 			// camp items: create
+			var count = 0;
 			for (var itemID in this.campTotalItems) {
 				var item = ItemConstants.getItemByID(itemID);
 				var li = UIConstants.getItemSlot(itemsComponent, item, 0, false, true);
 				addLis(li, itemID, "camp")
+				count++;
+				if (count >= 23) break;
 			}
 
 			// trader and camp resources
@@ -129,21 +131,21 @@ define([
 				var name = resourceNames[key];
 				var traderInventoryAmount = caravan.sellResources.getResource(name);
 				var campInventoryAmount = campStorage.resources.getResource(name);
-                var willBuy = caravan.buyResources.indexOf(name) >= 0;
-                
-                if (traderInventoryAmount || (campInventoryAmount && willBuy)) {
+				var willBuy = caravan.buyResources.indexOf(name) >= 0;
+				
+				if (traderInventoryAmount || (campInventoryAmount && willBuy)) {
 					var li = UIConstants.getResourceLi(name, 0, false, true);
-    				if (traderInventoryAmount > 0) {
-    					addLis(li, key, "trader")
-                    }
+					if (traderInventoryAmount > 0) {
+						addLis(li, key, "trader")
+					}
 
-    				if (campInventoryAmount > 0 && willBuy) {
-    					addLis(li, key, "camp")
-    				}
-                        
-                    console.log("create " + name + " " + traderInventoryAmount + " " + campInventoryAmount)
-                    highestAmount = Math.max(highestAmount, traderInventoryAmount, campInventoryAmount);
-                }
+					if (campInventoryAmount > 0 && willBuy) {
+						addLis(li, key, "camp")
+					}
+						
+					log.i("create " + name + " " + traderInventoryAmount + " " + campInventoryAmount)
+					highestAmount = Math.max(highestAmount, traderInventoryAmount, campInventoryAmount);
+				}
 			}
 
 			// trader and camp currency
@@ -157,7 +159,7 @@ define([
 				if (campInventoryAmount > 0) {
 					addLis(li, "currency", "camp");
 				}
-                highestAmount = Math.max(highestAmount, traderInventoryAmount, campInventoryAmount);
+				highestAmount = Math.max(highestAmount, traderInventoryAmount, campInventoryAmount);
 			}
 
 			var moveItem = function ($li, source) {
@@ -171,9 +173,8 @@ define([
 				var isTraderOffer = $li.parents("#inventorylist-incoming-caravan-trader-offer").length > 0;
 				var isCampInventory = $li.parents("#inventorylist-incoming-caravan-camp-inventory").length > 0;
 				var isCampOffer = $li.parents("#inventorylist-incoming-caravan-camp-offer").length > 0;
-                
-                var amount = Math.max(1, HorizontalSelect.getSelection(sys.multiplierSelect).value);
-                console.log("moveItem " + amount);
+				
+				var amount = Math.max(1, HorizontalSelect.getSelection(sys.multiplierSelect).value);
 
 				if (isCurrency) {
 					if (isTraderInventory) {
@@ -218,6 +219,7 @@ define([
 				}
 
 				sys.updateLists();
+				GlobalSignals.updateButtonsSignal.dispatch();
 			};
 
 			var onLiClicked = function (e) {
@@ -244,12 +246,12 @@ define([
 			GameGlobals.uiFunctions.generateCallouts("#inventorylist-incoming-caravan-trader-offer");
 			GameGlobals.uiFunctions.generateCallouts("#inventorylist-incoming-caravan-camp-inventory");
 			GameGlobals.uiFunctions.generateCallouts("#inventorylist-incoming-caravan-camp-offer");
-            
-            var selectionOptions = [{ value: 1, label: "1x" }];
-            if (highestAmount > 10) selectionOptions.push({ value: 10, label: "10x" });
-            if (highestAmount > 100) selectionOptions.push({ value: 100, label: "100x" });
-            if (highestAmount > 1000) selectionOptions.push({ value: 1000, label: "1000x" });
-            HorizontalSelect.setOptions(this.multiplierSelect, selectionOptions);
+			
+			var selectionOptions = [{ value: 1, label: "1x" }];
+			if (highestAmount > 10) selectionOptions.push({ value: 10, label: "10x" });
+			if (highestAmount > 100) selectionOptions.push({ value: 100, label: "100x" });
+			if (highestAmount > 1000) selectionOptions.push({ value: 1000, label: "1000x" });
+			HorizontalSelect.setOptions(this.multiplierSelect, selectionOptions);
 		},
 
 		updateLists: function () {
@@ -275,7 +277,7 @@ define([
 				var inventoryAmount = this.traderTotalItems[itemID] - selectedAmount;
 				UIConstants.updateItemSlot(this.traderInventoryLis[itemID], inventoryAmount);
 				UIConstants.updateItemSlot(this.traderOfferLis[itemID], selectedAmount);
-				traderOfferValue += selectedAmount * TradeConstants.getItemValue(item, true);
+				traderOfferValue += selectedAmount * TradeConstants.getItemValue(item, true, false);
 				visibleLisTraderInventory += inventoryAmount > 0 ? 1 : 0;
 				visibleLisTraderOffer += selectedAmount > 0 ? 1 : 0;
 			}
@@ -287,7 +289,7 @@ define([
 				var inventoryAmount = this.campTotalItems[itemID] - selectedAmount;
 				UIConstants.updateItemSlot(this.campInventoryLis[itemID], inventoryAmount);
 				UIConstants.updateItemSlot(this.campOfferLis[itemID], selectedAmount);
-				campOfferValue += selectedAmount * TradeConstants.getItemValue(item);
+				campOfferValue += selectedAmount * TradeConstants.getItemValue(item, false, true);
 				visibleLisCampInventory += inventoryAmount > 0 ? 1 : 0;
 				visibleLisCampOffer += selectedAmount > 0 ? 1 : 0;
 			}
@@ -342,9 +344,9 @@ define([
 			GameGlobals.uiFunctions.toggle("#inventorylist-incoming-caravan-trader-offer .msg-empty", visibleLisTraderOffer === 0);
 			GameGlobals.uiFunctions.toggle("#inventorylist-incoming-caravan-camp-inventory .msg-empty", visibleLisCampInventory === 0);
 			GameGlobals.uiFunctions.toggle("#inventorylist-incoming-caravan-camp-offer .msg-empty", visibleLisCampOffer === 0);
-            
-            $("#incoming-caravan-popup-reset").toggleClass("btn-disabled", traderOfferValue == 0 && campOfferValue == 0);
-            $("#incoming-caravan-popup-reset").attr("disabled", traderOfferValue == 0 && campOfferValue == 0);
+			
+			$("#incoming-caravan-popup-reset").toggleClass("btn-disabled", traderOfferValue == 0 && campOfferValue == 0);
+			$("#incoming-caravan-popup-reset").attr("disabled", traderOfferValue == 0 && campOfferValue == 0);
 		},
 
 		clearSelection: function () {
